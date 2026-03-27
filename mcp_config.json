@@ -25,7 +25,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "C:\\Users\\renre\\Downloads\\Smart_LMS"
+        "C:\\Users\\renre\\Smart_LMS"
       ]
     },
     "context7": {
@@ -48,7 +48,7 @@
         "MYSQL_PORT": "3306",
         "MYSQL_USER": "root",
         "MYSQL_PASSWORD": "",
-        "MYSQL_DATABASE": "smart_lms"
+        "MYSQL_DATABASE": "slms_db"
       }
     },
     "openapi": {
