@@ -48,7 +48,7 @@
         "MYSQL_PORT": "3306",
         "MYSQL_USER": "root",
         "MYSQL_PASSWORD": "",
-        "MYSQL_DATABASE": "sms_app"
+        "MYSQL_DATABASE": "smart_lms"
       }
     },
     "openapi": {
@@ -58,7 +58,7 @@
         "@modelcontextprotocol/server-openapi"
       ],
       "env": {
-        "OPENAPI_FILE": "C:\\Users\\renre\\Downloads\\SmS-APP\\openapi.yaml"
+        "OPENAPI_FILE": "C:\\Users\\renre\\Smart_LMS\\openapi.yaml"
       }
     },
     "playwright": {
