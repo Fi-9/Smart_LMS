@@ -14,11 +14,14 @@ class Rack extends Model
         'name',
         'rows',
         'columns',
+        'capacity_per_slot',
+        'column_category',
     ];
 
     protected $casts = [
         'rows' => 'integer',
         'columns' => 'integer',
+        'capacity_per_slot' => 'integer',
     ];
 
     public function books(): HasMany

@@ -64,6 +64,7 @@ class RackPageController extends Controller
         return view('racks.show', [
             'rack' => $rack,
             'grid' => $grid,
+            'grid_matrix' => $this->rackService->buildGridMatrix($rack),
             'grid_class' => $this->gridClass($rack->columns),
             'positions' => $this->rackService->generatePositions($rack->rows, $rack->columns),
             'books' => $books,

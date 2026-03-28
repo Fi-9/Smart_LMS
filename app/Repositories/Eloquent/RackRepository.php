@@ -20,7 +20,17 @@ class RackRepository implements RackRepositoryInterface
 
     public function findDefaultRackId(): ?int
     {
-        return Rack::query()->orderBy('id')->value('id');
+        $rackId = Rack::query()->orderBy('id')->value('id');
+
+        if (! $rackId) {
+            $rackId = Rack::query()->create([
+                'name' => 'Rack A',
+                'rows' => 2,
+                'columns' => 4,
+            ])->id;
+        }
+
+        return $rackId;
     }
 
     public function update(Rack $rack, array $attributes): Rack

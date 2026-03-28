@@ -7,15 +7,21 @@
         $type = $toast['type'] ?? 'info';
         $message = $toast['message'] ?? '';
         $classes = match ($type) {
-            'success' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
-            'error' => 'border-rose-200 bg-rose-50 text-rose-800',
+            'success' => 'border-primary-200 bg-primary-50 text-primary-800',
+            'error' => 'border-red-200 bg-red-50 text-red-800',
+            'warning' => 'border-amber-200 bg-amber-50 text-amber-800',
             default => 'border-blue-200 bg-blue-50 text-blue-800',
         };
+        $icons = match ($type) {
+            'success' => '✅',
+            'error' => '❌',
+            'warning' => '⚠️',
+            default => 'ℹ️',
+        };
     ?>
-    <div class="mb-4 rounded-lg border px-4 py-3 text-sm <?php echo e($classes); ?>">
-        <?php echo e($message); ?>
-
+    <div class="animate-slide-up mb-5 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm <?php echo e($classes); ?>">
+        <span class="text-base"><?php echo e($icons); ?></span>
+        <span><?php echo e($message); ?></span>
     </div>
 <?php endif; ?>
-
 <?php /**PATH C:\Users\renre\Smart_LMS\resources\views/components/ui/toast.blade.php ENDPATH**/ ?>

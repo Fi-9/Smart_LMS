@@ -3,21 +3,131 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Print Layout</title>
-    @vite('resources/css/app.css')
-</head>
-<body class="bg-white p-6">
-    <h1 class="mb-6 text-xl font-bold">QR Print Layout</h1>
+    <title>QR Print</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: Arial, sans-serif;
+            color: #0f172a;
+        }
 
-    <div class="grid grid-cols-3 gap-4">
-        @foreach($books as $book)
-            <div class="rounded border border-slate-300 p-3 text-center">
-                <img src="{{ $book->qr_code_path }}" alt="QR {{ $book->title }}" class="mx-auto mb-2 h-24 w-24 object-contain">
-                <p class="text-xs font-semibold">{{ $book->title }}</p>
-                <p class="text-xs text-slate-500">{{ $book->rack->name }} - {{ $book->position_code }}</p>
-            </div>
-        @endforeach
+        .toolbar {
+            margin-bottom: 16px;
+        }
+
+        .print-btn {
+            border: 0;
+            border-radius: 8px;
+            background: #0f172a;
+            color: #fff;
+            padding: 10px 14px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .sheet {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .sticker {
+            border: 1px dashed #94a3b8;
+            border-radius: 8px;
+            padding: 10px;
+            min-height: 180px;
+            text-align: center;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .sticker img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            margin-bottom: 8px;
+        }
+
+        .title {
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.3;
+            margin-bottom: 4px;
+            max-height: 2.6em;
+            overflow: hidden;
+        }
+
+        .meta {
+            font-size: 10px;
+            color: #475569;
+        }
+
+        .page-break {
+            page-break-after: always;
+            break-after: page;
+        }
+
+        .empty-state {
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 18px;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 8mm;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .sticker {
+                border: 1px dashed #cbd5e1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar no-print">
+        <button class="print-btn" type="button" onclick="window.print()">Print</button>
     </div>
+
+    @if($books->isEmpty())
+        <div class="empty-state">No QR items found for current filter.</div>
+    @else
+        @php
+            $chunks = $books->chunk(16);
+            $lastChunkIndex = $chunks->count() - 1;
+        @endphp
+
+        @foreach($chunks as $chunkIndex => $page)
+            <div class="sheet">
+                @foreach($page as $book)
+                    <div class="sticker">
+                        <img src="{{ $book->qr_code ?: $book->qr_code_path }}" alt="QR {{ $book->title }}">
+                        <div class="title">{{ \Illuminate\Support\Str::limit($book->title, 36) }}</div>
+                        <div class="meta">{{ $book->rack->name ?? '-' }} - {{ $book->position_code ?? '-' }}</div>
+                    </div>
+                @endforeach
+            </div>
+
+            @if($chunkIndex !== $lastChunkIndex)
+                <div class="page-break"></div>
+            @endif
+        @endforeach
+    @endif
 </body>
 </html>
-

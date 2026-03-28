@@ -6,6 +6,7 @@ use App\Enums\BookStatus;
 use App\Models\Book;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -13,6 +14,9 @@ use Illuminate\Validation\Rule;
 class BulkImportService
 {
     private const PREVIEW_CACHE_PREFIX = 'bulk-import-preview:';
+    private const PREVIEW_CACHE_TTL_MINUTES = 30;
+    private const COMMIT_CHUNK_SIZE = 100;
+    private const MAX_PREVIEW_ROWS = 2000;
 
     public function __construct(
         private readonly BookService $bookService,
@@ -24,6 +28,24 @@ class BulkImportService
     {
         $rows = $this->parseCsv($file);
         $defaultRackId = $this->rackService->findDefaultRackId();
+
+        if (count($rows) > self::MAX_PREVIEW_ROWS) {
+            return [
+                'message' => 'CSV exceeds maximum rows for preview.',
+                'preview_token' => null,
+                'summary' => [
+                    'total_rows' => count($rows),
+                    'valid_rows' => 0,
+                    'invalid_rows' => count($rows),
+                ],
+                'errors' => [[
+                    'row' => 0,
+                    'errors' => ["Maximum ".self::MAX_PREVIEW_ROWS.' rows allowed per preview.'],
+                ]],
+                'preview_rows' => [],
+                'analyzed_rows' => [],
+            ];
+        }
 
         if (! $defaultRackId) {
             return [
@@ -94,7 +116,7 @@ class BulkImportService
         Cache::put(
             self::PREVIEW_CACHE_PREFIX.$previewToken,
             ['rows' => $validRows],
-            now()->addMinutes(30)
+            now()->addMinutes(self::PREVIEW_CACHE_TTL_MINUTES)
         );
 
         return [
@@ -125,13 +147,28 @@ class BulkImportService
 
         $imported = 0;
         $skipped = 0;
+        $skippedReasons = [];
 
-        foreach ($payload['rows'] as $row) {
-            try {
-                $this->bookService->create($row);
-                $imported++;
-            } catch (\Throwable) {
-                $skipped++;
+        foreach (array_chunk($payload['rows'], self::COMMIT_CHUNK_SIZE) as $chunk) {
+            foreach ($chunk as $row) {
+                try {
+                    $category = \App\Models\Category::firstOrCreate(['name' => $row['category_name']]);
+                    $row['category_id'] = $category->id;
+                    unset($row['category_name']);
+                    
+                    $this->bookService->create($row);
+                    $imported++;
+                } catch (\Throwable $exception) {
+                    $skipped++;
+                    $reason = $exception->getMessage();
+                    $skippedReasons[$reason] = ($skippedReasons[$reason] ?? 0) + 1;
+
+                    Log::warning('Bulk import row skipped.', [
+                        'isbn' => $row['isbn'] ?? null,
+                        'title' => $row['title'] ?? null,
+                        'reason' => $reason,
+                    ]);
+                }
             }
         }
 
@@ -141,6 +178,7 @@ class BulkImportService
             'message' => 'Bulk import completed.',
             'imported' => $imported,
             'skipped' => $skipped,
+            'skipped_reasons' => $skippedReasons,
         ];
     }
 
@@ -163,6 +201,10 @@ class BulkImportService
         $header = array_map(static fn ($col) => trim((string) $col), $header);
 
         while (($line = fgetcsv($handle)) !== false) {
+            if ($line === [null] || $line === false) {
+                continue;
+            }
+
             $row = [];
             foreach ($header as $i => $key) {
                 $row[$key] = $line[$i] ?? null;
@@ -181,7 +223,7 @@ class BulkImportService
             'title' => trim((string) ($row['title'] ?? '')),
             'author' => trim((string) ($row['author'] ?? '')),
             'isbn' => $this->nullableTrimmedValue($row['isbn'] ?? null),
-            'category_id' => (int) ($row['category_id'] ?? 0),
+            'category_name' => trim((string) ($row['category'] ?? $row['category_name'] ?? 'Uncategorized')),
             'rack_id' => $this->normalizeRackId($row['rack_id'] ?? null, $defaultRackId),
             'position_code' => strtoupper(trim((string) ($row['position_code'] ?? ''))),
             'cover_url' => $this->nullableTrimmedValue($row['cover_url'] ?? null),
@@ -195,7 +237,7 @@ class BulkImportService
             'title' => ['required', 'string', 'max:255'],
             'author' => ['required', 'string', 'max:255'],
             'isbn' => ['nullable', 'string', 'max:32'],
-            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'category_name' => ['required', 'string', 'max:255'],
             'rack_id' => ['required', 'integer', 'exists:racks,id'],
             'position_code' => ['required', 'string', 'max:10'],
             'cover_url' => ['nullable', 'url', 'max:1024'],

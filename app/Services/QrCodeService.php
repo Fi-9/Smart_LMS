@@ -11,14 +11,26 @@ class QrCodeService
     {
         $relativePath = "qrcodes/book-{$bookId}.png";
         $publicPath = "storage/{$relativePath}";
-        $targetUrl = url("/book/{$bookId}");
+        $targetUrl = route('books.public.show', $bookId);
 
         Storage::disk('public')->put(
             $relativePath,
-            QrCode::format('png')->size(300)->generate($targetUrl)
+            QrCode::format('png')->size(300)->errorCorrection('H')->generate($targetUrl)
         );
 
         return "/{$publicPath}";
+    }
+
+    public function generateBase64(int $bookId): string
+    {
+        $targetUrl = route('books.public.show', $bookId);
+        $qrCode = QrCode::format('png')
+            ->size(300)
+            ->margin(1)
+            ->errorCorrection('H')
+            ->generate($targetUrl);
+        
+        return 'data:image/png;base64,' . base64_encode($qrCode);
     }
 }
 

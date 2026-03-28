@@ -18,6 +18,8 @@ class DashboardService
             'total_racks' => Rack::query()->count(),
             'available_books' => Book::query()->where('status', BookStatus::AVAILABLE->value)->count(),
             'borrowed_books' => Book::query()->where('status', BookStatus::BORROWED->value)->count(),
+            'total_borrowed_active' => \App\Models\Borrowing::query()->active()->count(),
+            'total_late' => \App\Models\Borrowing::query()->late()->count(),
             'books_per_category' => DB::table('books')
                 ->join('categories', 'categories.id', '=', 'books.category_id')
                 ->selectRaw('categories.name as category, count(*) as total')

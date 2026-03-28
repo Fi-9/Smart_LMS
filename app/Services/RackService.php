@@ -53,21 +53,87 @@ class RackService
 
     public function buildGrid(Rack $rack): array
     {
-        $booksByPosition = $rack->books->keyBy('position_code');
+        $booksByPosition = $rack->books->groupBy('position_code');
         $grid = [];
+        $capacity = $rack->capacity_per_slot ?? 1;
 
         foreach ($this->generatePositions($rack->rows, $rack->columns) as $positionCode) {
-            $book = $booksByPosition->get($positionCode);
+            $books = $booksByPosition->get($positionCode, collect());
+            $count = $books->count();
 
             $grid[] = [
                 'code' => $positionCode,
-                'occupied' => (bool) $book,
-                'book_title' => $book?->title,
-                'book_id' => $book?->id,
+                'occupied' => $count > 0,
+                'is_full' => $count >= $capacity,
+                'count' => $count,
+                'capacity' => $capacity,
+                'books' => $books->map(fn($b) => ['id' => $b->id, 'title' => $b->title])->toArray(),
+                'book_title' => $books->first()?->title,
+                'book_id' => $books->first()?->id,
             ];
         }
 
         return $grid;
+    }
+
+    public function buildGridMatrix(Rack $rack): array
+    {
+        $booksByPosition = $rack->books->groupBy('position_code');
+        $matrix = [];
+        $capacity = $rack->capacity_per_slot ?? 1;
+
+        for ($rowIndex = 0; $rowIndex < $rack->rows; $rowIndex++) {
+            $rowLabel = chr(65 + $rowIndex);
+            $rowCells = [];
+
+            for ($columnIndex = 1; $columnIndex <= $rack->columns; $columnIndex++) {
+                $positionCode = $rowLabel.$columnIndex;
+                $books = $booksByPosition->get($positionCode, collect());
+                $count = $books->count();
+
+                $rowCells[] = [
+                    'code' => $positionCode,
+                    'occupied' => $count > 0,
+                    'is_full' => $count >= $capacity,
+                    'count' => $count,
+                    'capacity' => $capacity,
+                    'books' => $books->map(fn($b) => ['id' => $b->id, 'title' => $b->title])->toArray(),
+                    'book_title' => $books->first()?->title,
+                    'book_id' => $books->first()?->id,
+                ];
+            }
+
+            $matrix[] = [
+                'label' => $rowLabel,
+                'cells' => $rowCells,
+            ];
+        }
+
+        return $matrix;
+    }
+
+    public function buildMiniMap(Rack $rack, int $currentBookId): array
+    {
+        $rack->loadMissing(['books:id,title,rack_id,position_code']);
+
+        $matrix = $this->buildGridMatrix($rack);
+
+        foreach ($matrix as $rowIndex => $row) {
+            foreach ($row['cells'] as $cellIndex => $cell) {
+                $state = 'empty';
+
+                if ($cell['occupied']) {
+                    $state = ((int) $cell['book_id'] === $currentBookId) ? 'current' : 'filled';
+                }
+
+                $matrix[$rowIndex]['cells'][$cellIndex]['state'] = $state;
+            }
+        }
+
+        return [
+            'rack_name' => $rack->name,
+            'matrix' => $matrix,
+        ];
     }
 
     public function availableSlots(): array
@@ -79,14 +145,14 @@ class RackService
             ->get();
 
         foreach ($racks as $rack) {
-            $occupied = $rack->books
-                ->pluck('position_code')
-                ->filter()
-                ->flip()
-                ->all();
+            $counts = $rack->books
+                ->groupBy('position_code')
+                ->map(fn($group) => $group->count());
+            
+            $capacity = $rack->capacity_per_slot ?? 1;
 
             foreach ($this->generatePositions($rack->rows, $rack->columns) as $positionCode) {
-                if (! isset($occupied[$positionCode])) {
+                if ($counts->get($positionCode, 0) < $capacity) {
                     $slots[] = [
                         'rack_id' => $rack->id,
                         'position_code' => $positionCode,
@@ -96,5 +162,33 @@ class RackService
         }
 
         return $slots;
+    }
+
+    public function firstAvailableSlotInRack(int $rackId): ?array
+    {
+        $rack = Rack::query()
+            ->with(['books:id,rack_id,position_code'])
+            ->find($rackId);
+
+        if (! $rack) {
+            return null;
+        }
+
+        $counts = $rack->books
+            ->groupBy('position_code')
+            ->map(fn($group) => $group->count());
+        
+        $capacity = $rack->capacity_per_slot ?? 1;
+
+        foreach ($this->generatePositions($rack->rows, $rack->columns) as $positionCode) {
+            if ($counts->get($positionCode, 0) < $capacity) {
+                return [
+                    'rack_id' => $rack->id,
+                    'position_code' => $positionCode,
+                ];
+            }
+        }
+
+        return null;
     }
 }

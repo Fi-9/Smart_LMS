@@ -1,4 +1,4 @@
-<div <?php echo e($attributes->merge(['class' => 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm'])); ?>>
+<div <?php echo e($attributes->merge(['class' => 'rounded-xl border border-border bg-surface p-5 shadow-sm'])); ?>>
     <?php echo e($slot); ?>
 
 </div>

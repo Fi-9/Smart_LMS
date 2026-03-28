@@ -4,6 +4,7 @@ use App\Http\Controllers\BookPublicController;
 use App\Http\Controllers\QrScannerController;
 use App\Http\Controllers\Web\BookAssignmentController;
 use App\Http\Controllers\Web\BookPageController;
+use App\Http\Controllers\Web\BorrowingController;
 use App\Http\Controllers\Web\BulkImportPageController;
 use App\Http\Controllers\Web\CategoryPageController;
 use App\Http\Controllers\Web\DashboardPageController;
@@ -19,6 +20,10 @@ Route::post('/books/auto-assign', [BookAssignmentController::class, 'autoAssign'
 Route::get('/books/import', [BulkImportPageController::class, 'view'])->name('books.import');
 Route::post('/books/import/preview', [BulkImportPageController::class, 'preview'])->name('books.import.preview');
 Route::post('/books/import/commit', [BulkImportPageController::class, 'commit'])->name('books.import.commit');
+Route::post('/books/import/manual', [BulkImportPageController::class, 'storeManual'])->name('books.import.manual');
+Route::post('/books/import/isbn-lookup', [BulkImportPageController::class, 'lookupIsbn'])->name('books.import.isbn-lookup');
+Route::get('/books/{book}/panel', [BookPageController::class, 'panel'])->name('books.web.panel');
+Route::get('/books/{book}', [BookPageController::class, 'show'])->name('books.web.show');
 Route::get('/categories', [CategoryPageController::class, 'index'])->name('categories.index');
 Route::post('/categories', [CategoryPageController::class, 'store'])->name('categories.store');
 Route::put('/categories/{category}', [CategoryPageController::class, 'update'])->name('categories.update');
@@ -32,6 +37,12 @@ Route::post('/racks/{rack}/assign', [RackPageController::class, 'assign'])->name
 Route::get('/qr', [QrStickerPageController::class, 'index'])->name('qr.index');
 Route::get('/qr/generate', [QrStickerPageController::class, 'index'])->name('qr.generate');
 Route::get('/qr/print', [QrStickerPageController::class, 'print'])->name('qr.print');
+Route::post('/qr/generate-missing', [QrStickerPageController::class, 'generateMissing'])->name('qr.generate-missing');
+Route::post('/qr/generate-single/{book}', [QrStickerPageController::class, 'generateSingle'])->name('qr.generate-single');
+
+Route::get('/borrowings', [BorrowingController::class, 'index'])->name('borrowings.index');
+Route::post('/borrowings', [BorrowingController::class, 'store'])->name('borrowings.store');
+Route::post('/borrowings/{borrowing}/return', [BorrowingController::class, 'returnBook'])->name('borrowings.return');
 
 Route::get('/scan', QrScannerController::class)->name('scanner');
 Route::get('/book/{bookId}', [BookPublicController::class, 'show'])->name('books.public.show');

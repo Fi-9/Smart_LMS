@@ -1,38 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $book->title }} - Smart Library</title>
-    @vite(['resources/css/app.css'])
-</head>
-<body class="min-h-screen bg-slate-100 p-6 text-slate-900">
-    <main class="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow-sm">
-        <h1 class="text-2xl font-bold">{{ $book->title }}</h1>
-        <p class="mt-1 text-slate-600">Author: {{ $book->author }}</p>
-        <dl class="mt-6 space-y-3">
-            <div>
-                <dt class="text-sm text-slate-500">ISBN</dt>
-                <dd class="font-medium">{{ $book->isbn ?? '-' }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm text-slate-500">Category</dt>
-                <dd class="font-medium">{{ $book->category->name }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm text-slate-500">Rack</dt>
-                <dd class="font-medium">{{ $book->rack->name }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm text-slate-500">Position</dt>
-                <dd class="font-medium">{{ $book->position_code }}</dd>
-            </div>
-            <div>
-                <dt class="text-sm text-slate-500">Status</dt>
-                <dd class="font-medium uppercase">{{ $book->status->value }}</dd>
-            </div>
-        </dl>
-    </main>
-</body>
-</html>
+@extends('layouts.app')
 
+@section('content')
+    <div class="mb-5 flex items-center justify-between">
+        <a href="{{ route('books.index') }}" class="text-sm font-medium text-slate-600 hover:text-slate-900">Back to Books</a>
+        <a href="{{ route('books.public.show', $book->id) }}" target="_blank" class="text-sm font-medium text-emerald-700 hover:text-emerald-800">Open Public View</a>
+    </div>
+
+    @include('books.partials.detail_panel', ['book' => $book, 'rack_mini_map' => $rack_mini_map ?? null])
+@endsection

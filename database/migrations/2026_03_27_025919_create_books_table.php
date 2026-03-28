@@ -17,8 +17,8 @@ return new class extends Migration
             $table->string('author');
             $table->string('isbn')->nullable()->unique();
             $table->foreignId('category_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('rack_id')->constrained()->cascadeOnDelete();
-            $table->string('position_code');
+            $table->foreignId('rack_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('position_code')->nullable();
             $table->string('cover_url')->nullable();
             $table->string('qr_code_path')->nullable();
             $table->enum('status', ['available', 'borrowed'])->default('available');

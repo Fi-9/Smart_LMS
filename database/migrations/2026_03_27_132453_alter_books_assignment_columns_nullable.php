@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -10,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement('ALTER TABLE books DROP FOREIGN KEY books_rack_id_foreign');
         DB::statement('ALTER TABLE books DROP INDEX books_rack_id_position_code_unique');
         DB::statement('ALTER TABLE books MODIFY rack_id BIGINT UNSIGNED NULL');
@@ -23,6 +28,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::table('books')
             ->whereNull('rack_id')
             ->orWhereNull('position_code')

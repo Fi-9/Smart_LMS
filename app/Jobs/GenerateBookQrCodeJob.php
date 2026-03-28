@@ -5,11 +5,23 @@ namespace App\Jobs;
 use App\Models\Book;
 use App\Services\QrCodeService;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
 class GenerateBookQrCodeJob implements ShouldQueue
 {
-    use Queueable;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 3;
+
+    public int $timeout = 30;
+
+    public function backoff(): array
+    {
+        return [2, 10, 30];
+    }
 
     /**
      * Create a new job instance.

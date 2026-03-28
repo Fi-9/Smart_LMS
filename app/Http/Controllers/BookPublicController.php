@@ -16,7 +16,6 @@ class BookPublicController extends Controller
     {
         $book = $this->bookService->findOrFail($bookId);
 
-        return view('books.show', compact('book'));
+        return view('books.public_show', compact('book'));
     }
 }
-

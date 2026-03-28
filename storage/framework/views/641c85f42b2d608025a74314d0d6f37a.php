@@ -36,13 +36,14 @@ unset($__defined_vars); ?>
 
 <?php
     $classes = match ($variant) {
-        'success' => 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-300',
-        'secondary' => 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 focus:ring-gray-300',
-        default => 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-300',
+        'success' => 'bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-300',
+        'secondary' => 'border border-border bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-300',
+        'danger' => 'bg-danger text-white hover:bg-red-700 focus:ring-red-300',
+        default => 'bg-primary-800 text-white hover:bg-primary-700 focus:ring-primary-300',
     };
 ?>
 
-<button type="<?php echo e($type); ?>" <?php echo e($attributes->merge(['class' => "rounded-md px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring {$classes}"])); ?>>
+<button type="<?php echo e($type); ?>" <?php echo e($attributes->merge(['class' => "inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 {$classes}"])); ?>>
     <?php echo e($slot); ?>
 
 </button>
