@@ -1,0 +1,26 @@
+﻿
+   INFO  Running migrations.  
+
+  2026_03_28_070000_create_borrowings_table  6.94ms FAIL
+
+   Illuminate\Database\QueryException 
+
+  SQLSTATE[42000]: Syntax error or access violation: 1067 Invalid default value for 'due_date' (Connection: mysql, SQL: create table `borrowings` (`id` bigint unsigned not null auto_increment primary key, `book_id` bigint unsigned not null, `borrower_name` varchar(255) not null, `borrowed_at` timestamp not null, `due_date` timestamp not null, `returned_at` timestamp null, `status` varchar(255) not null default 'borrowed', `created_by` varchar(255) not null default 'admin', `created_at` timestamp null, `updated_at` timestamp null) default character set utf8mb4 collate 'utf8mb4_unicode_ci')
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:825
+    821Ôûò                     $this->getName(), $query, $this->prepareBindings($bindings), $e
+    822Ôûò                 );
+    823Ôûò             }
+    824Ôûò 
+  Ô×£ 825Ôûò             throw new QueryException(
+    826Ôûò                 $this->getName(), $query, $this->prepareBindings($bindings), $e
+    827Ôûò             );
+    828Ôûò         }
+    829Ôûò     }
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:571
+      PDOException::("SQLSTATE[42000]: Syntax error or access violation: 1067 Invalid default value for 'due_date'")
+
+  2   vendor\laravel\framework\src\Illuminate\Database\Connection.php:571
+      PDOStatement::execute()
+
