@@ -6,6 +6,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property int $rows
+ * @property int $columns
+ * @property int|null $capacity_per_slot
+ * @property string|null $column_category
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Book> $books
+ */
 class Rack extends Model
 {
     use HasFactory;

@@ -9,6 +9,7 @@ use App\Services\BorrowingService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class BorrowingController extends Controller
 {
@@ -44,7 +45,7 @@ class BorrowingController extends Controller
                 'message' => "Buku '{$borrowing->book->title}' berhasil dipinjamkan.",
                 'borrowing' => $borrowing,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -63,7 +64,7 @@ class BorrowingController extends Controller
                 'message' => "Buku '{$returned->book->title}' berhasil dikembalikan.",
                 'borrowing' => $returned,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),

@@ -8,7 +8,9 @@ use App\Models\Category;
 use App\Models\Rack;
 use App\Services\BookService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Throwable;
 
 class QrStickerPageController extends Controller
 {
@@ -84,15 +86,24 @@ class QrStickerPageController extends Controller
         ]);
     }
 
-    public function generateSingle(Book $book): \Illuminate\Http\JsonResponse
+    public function generateSingle(Book $book): JsonResponse
     {
-        $base64 = $this->bookService->generateQrCode($book);
- 
-        return response()->json([
-            'success' => true,
-            'message' => "QR Code successfully generated for '{$book->title}'.",
-            'qr_code' => $base64,
-        ]);
+        try {
+            $base64 = $this->bookService->generateQrCode($book);
+
+            return response()->json([
+                'success' => true,
+                'message' => "QR Code successfully generated for '{$book->title}'.",
+                'qr_code' => $base64,
+            ]);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'QR generation failed on server.',
+            ], 500);
+        }
     }
 
     public function generateMissing(Request $request)

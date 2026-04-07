@@ -6,5 +6,9 @@
         <a href="{{ route('books.public.show', $book->id) }}" target="_blank" class="text-sm font-medium text-emerald-700 hover:text-emerald-800">Open Public View</a>
     </div>
 
-    @include('books.partials.detail_panel', ['book' => $book, 'rack_mini_map' => $rack_mini_map ?? null])
+    @include('books.partials.detail_panel', [
+        'book' => $book,
+        'rack_mini_map' => $rack_mini_map ?? null,
+        'compact_description' => $compact_description ?? false,
+    ])
 @endsection

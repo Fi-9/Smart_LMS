@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
+    public function __construct(
+        private readonly AiScanObservabilityService $aiScanObservabilityService
+    ) {
+    }
+
     public function stats(): array
     {
         return [
@@ -32,7 +37,7 @@ class DashboardService
                 ->groupBy('racks.name')
                 ->orderByDesc('total')
                 ->get(),
+            'ai_scan_today' => $this->aiScanObservabilityService->todayStats(),
         ];
     }
 }
-

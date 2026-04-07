@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\Book;
 use App\Models\Rack;
 use App\Repositories\Contracts\RackRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class RackService
 {
@@ -67,7 +69,9 @@ class RackService
                 'is_full' => $count >= $capacity,
                 'count' => $count,
                 'capacity' => $capacity,
-                'books' => $books->map(fn($b) => ['id' => $b->id, 'title' => $b->title])->toArray(),
+                'books' => $books->map(
+                    fn (Book $book): array => ['id' => $book->id, 'title' => $book->title]
+                )->toArray(),
                 'book_title' => $books->first()?->title,
                 'book_id' => $books->first()?->id,
             ];
@@ -97,7 +101,9 @@ class RackService
                     'is_full' => $count >= $capacity,
                     'count' => $count,
                     'capacity' => $capacity,
-                    'books' => $books->map(fn($b) => ['id' => $b->id, 'title' => $b->title])->toArray(),
+                    'books' => $books->map(
+                        fn (Book $book): array => ['id' => $book->id, 'title' => $book->title]
+                    )->toArray(),
                     'book_title' => $books->first()?->title,
                     'book_id' => $books->first()?->id,
                 ];
@@ -147,7 +153,7 @@ class RackService
         foreach ($racks as $rack) {
             $counts = $rack->books
                 ->groupBy('position_code')
-                ->map(fn($group) => $group->count());
+                ->map(fn (Collection $group): int => $group->count());
             
             $capacity = $rack->capacity_per_slot ?? 1;
 
@@ -176,7 +182,7 @@ class RackService
 
         $counts = $rack->books
             ->groupBy('position_code')
-            ->map(fn($group) => $group->count());
+            ->map(fn (Collection $group): int => $group->count());
         
         $capacity = $rack->capacity_per_slot ?? 1;
 

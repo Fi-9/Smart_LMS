@@ -4,7 +4,7 @@
     <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
             <h1 class="page-title">Rack {{ $rack->name }}</h1>
-            <p class="page-subtitle">Cinema-style 2D grid — klik slot kosong untuk assign, klik buku untuk detail.</p>
+            <p class="page-subtitle">Cinema-style 2D grid — tiap slot bisa menampung banyak buku sesuai kapasitas.</p>
         </div>
         <div class="flex gap-2">
             <button
@@ -47,7 +47,7 @@
             <div class="mb-4 rounded-xl border border-dashed border-primary-300 bg-primary-50 px-4 py-6 text-center">
                 <p class="text-3xl">🗄️</p>
                 <p class="mt-2 text-sm font-medium text-primary-800">Belum ada buku di rack ini</p>
-                <p class="mt-1 text-xs text-primary-600">Klik slot kosong untuk mulai assign, atau gunakan tombol Auto Assign.</p>
+                <p class="mt-1 text-xs text-primary-600">Klik slot yang masih tersedia untuk assign, atau gunakan tombol Auto Assign.</p>
             </div>
         @endif
 
@@ -55,7 +55,7 @@
             {{-- Column Labels --}}
             <div class="mb-2 flex items-center gap-3">
                 <div class="w-8"></div>
-                <div class="grid gap-2 flex-1 min-w-max" {!! 'style="grid-template-columns: repeat(' . $rack->columns . ', minmax(0, 1fr));"' !!}>
+                <div class="grid gap-2 flex-1 min-w-max" {!! 'style="grid-template-columns: repeat(' . $rack->columns . ', 1fr);"' !!}>
                     @for($col = 1; $col <= $rack->columns; $col++)
                         <div class="text-center">
                             <div class="text-[10px] font-bold text-gray-400">{{ $col }}</div>
@@ -71,48 +71,40 @@
                 @foreach($grid_matrix as $row)
                     <div class="flex items-center gap-3">
                         <div class="w-8 text-center text-sm font-bold text-gray-500">{{ $row['label'] }}</div>
-                        <div class="grid gap-2 flex-1 min-w-max" {!! 'style="grid-template-columns: repeat(' . $rack->columns . ', minmax(60px, 1fr));"' !!}>
+                        <div class="grid gap-2 flex-1 min-w-max" {!! 'style="grid-template-columns: repeat(' . $rack->columns . ', 1fr);"' !!}>
                         @foreach($row['cells'] as $cell)
-                            @if($cell['occupied'])
-                                <button
-                                    type="button"
-                                    title="{{ implode(', ', array_column($cell['books'], 'title')) }}"
-                                    data-grid-cell
-                                    data-filled-cell
-                                    data-position-code="{{ $cell['code'] }}"
-                                    data-book-titles="{{ strtolower(implode(' ', array_column($cell['books'], 'title'))) }}"
-                                    class="rounded-lg border border-primary-300 bg-primary-100 p-2 text-center text-xs text-primary-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-500 hover:bg-primary-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]"
-                                >
-                                    <div class="font-bold border-b border-primary-200 w-full pb-0.5 mb-0.5">{{ $cell['code'] }}</div>
-                                    <div class="flex flex-col gap-0.5 w-full max-h-16 overflow-y-auto no-scrollbar">
-                                        @foreach($cell['books'] as $b)
-                                            <div class="truncate text-[9px] bg-white/50 rounded px-1 py-0.5 w-full">{{ $b['title'] }}</div>
+                            @php
+                                $canAssign = ! $cell['is_full'];
+                                $cellTitles = implode(', ', array_column($cell['books'], 'title'));
+                            @endphp
+                            <button
+                                type="button"
+                                title="{{ $canAssign ? 'Klik untuk assign buku' : ($cellTitles ?: 'Slot penuh') }}"
+                                data-grid-cell
+                                data-position-code="{{ $cell['code'] }}"
+                                data-book-titles="{{ strtolower(implode(' ', array_column($cell['books'], 'title'))) }}"
+                                data-count="{{ $cell['count'] }}"
+                                data-capacity="{{ $cell['capacity'] }}"
+                                @if($canAssign) data-slot-button @else data-filled-cell @endif
+                                class="{{ $canAssign
+                                    ? 'rounded-lg border border-gray-200 bg-gray-50 p-2 text-center text-xs text-gray-500 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-200 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]'
+                                    : 'rounded-lg border border-primary-300 bg-primary-100 p-2 text-center text-xs text-primary-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-500 hover:bg-primary-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]' }}"
+                            >
+                                <div class="font-bold border-b {{ $canAssign ? 'border-gray-200' : 'border-primary-200' }} w-full pb-0.5 mb-0.5">{{ $cell['code'] }}</div>
+                                <div class="text-[10px] font-semibold">{{ $cell['count'] }}/{{ $cell['capacity'] }}</div>
+                                @if($cell['count'] > 0)
+                                    <div class="mt-1 flex w-full flex-col gap-0.5 {{ $canAssign ? 'pointer-events-none' : '' }}">
+                                        @foreach(array_slice($cell['books'], 0, 3) as $b)
+                                            <div class="truncate rounded px-1 py-0.5 text-[8px] {{ $canAssign ? 'bg-white/70' : 'bg-white/50' }} w-full">{{ $b['title'] }}</div>
                                         @endforeach
+                                        @if($cell['count'] > 3)
+                                            <div class="text-[8px] {{ $canAssign ? 'text-primary-700' : 'text-primary-800' }}">+{{ $cell['count'] - 3 }} buku lainnya</div>
+                                        @endif
                                     </div>
-                                </button>
-                            @else
-                                <button
-                                    type="button"
-                                    title="Klik untuk assign buku"
-                                    data-slot-button
-                                    data-grid-cell
-                                    data-position-code="{{ $cell['code'] }}"
-                                    data-is-partially-filled="{{ $cell['count'] > 0 ? '1' : '0' }}"
-                                    class="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center text-xs text-gray-400 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-200 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]"
-                                >
-                                    <div class="font-bold border-b border-gray-200 w-full pb-0.5 mb-0.5">{{ $cell['code'] }}</div>
-                                    <div class="text-[10px]">
-                                        {{ $cell['count'] > 0 ? $cell['count'] . '/' . $cell['capacity'] : 'Empty' }}
-                                    </div>
-                                    @if($cell['count'] > 0)
-                                        <div class="mt-1 flex flex-col gap-0.5 w-full max-h-16 overflow-y-auto no-scrollbar pointer-events-none">
-                                            @foreach($cell['books'] as $b)
-                                                <div class="truncate text-[8px] bg-white/50 rounded px-1 py-0.5 w-full">{{ $b['title'] }}</div>
-                                            @endforeach
-                                        </div>
-                                    @endif
-                                </button>
-                            @endif
+                                @else
+                                    <div class="text-[10px]">Empty</div>
+                                @endif
+                            </button>
                         @endforeach
                     </div>
                 </div>
@@ -132,8 +124,8 @@
             </select>
 
             <select id="move-position-code" class="form-input">
-                <option value="">Select target empty slot</option>
-                @foreach($empty_positions as $position)
+                <option value="">Select target available slot</option>
+                @foreach($available_positions as $position)
                     <option value="{{ $position }}">{{ $position }}</option>
                 @endforeach
             </select>
@@ -170,7 +162,7 @@
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="form-label">Slot Capacity</label>
-                        <input name="capacity_per_slot" type="number" min="1" value="{{ $rack->capacity_per_slot ?? 1 }}" class="form-input" required>
+                        <input name="capacity_per_slot" type="number" min="1" max="100" value="{{ $rack->capacity_per_slot ?? 50 }}" class="form-input" required>
                     </div>
                     <div>
                         <label class="form-label">Col Category</label>
@@ -291,16 +283,16 @@
             const popupViewLink = document.getElementById('popup-view-link');
             const closeBookPopupButtons = document.querySelectorAll('[data-close-book-popup]');
 
-            const emptyCellClass = 'rounded-lg border border-gray-200 bg-gray-50 p-2 text-center text-xs text-gray-400 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-200 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]';
+            const assignableCellClass = 'rounded-lg border border-gray-200 bg-gray-50 p-2 text-center text-xs text-gray-500 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-200 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]';
             const selectedCellClass = 'rounded-lg border-2 border-primary-600 bg-primary-800 p-2 text-center text-xs text-white transition-all duration-200 shadow-md scale-105 focus:outline-none flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]';
-            const occupiedCellClass = 'rounded-lg border border-primary-300 bg-primary-100 p-2 text-center text-xs text-primary-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-500 hover:bg-primary-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]';
+            const fullCellClass = 'rounded-lg border border-primary-300 bg-primary-100 p-2 text-center text-xs text-primary-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-500 hover:bg-primary-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300 flex flex-col items-center justify-start gap-1 h-full min-h-[5rem]';
 
             let activePosition = null;
             let selectedSlotButton = null;
             
             let allRackBooks = JSON.parse(document.getElementById('rack-books-data').textContent);
 
-            const getEmptySlotButtons = () => rackGrid ? rackGrid.querySelectorAll('[data-slot-button]') : [];
+            const getAvailableSlotButtons = () => rackGrid ? rackGrid.querySelectorAll('[data-slot-button]') : [];
             const getFilledButtons = () => rackGrid ? rackGrid.querySelectorAll('[data-filled-cell]') : [];
 
             const openModal = (positionCode) => {
@@ -361,7 +353,7 @@
 
             const clearSelectedCell = () => {
                 if (!selectedSlotButton) return;
-                selectedSlotButton.className = emptyCellClass;
+                renderCell(selectedSlotButton);
                 selectedSlotButton = null;
             };
 
@@ -384,8 +376,50 @@
             };
 
             const bindEvents = () => {
-                getEmptySlotButtons().forEach(btn => btn.onclick = () => openModal(btn.dataset.positionCode));
+                getAvailableSlotButtons().forEach(btn => btn.onclick = () => openModal(btn.dataset.positionCode));
                 getFilledButtons().forEach(btn => btn.onclick = () => openBookPopup(btn));
+            };
+
+            const renderCell = (target) => {
+                if (!target) return;
+
+                const positionCode = target.dataset.positionCode;
+                const capacity = Number(target.dataset.capacity || 1);
+                const booksInCell = allRackBooks.filter(b => b.position_code === positionCode);
+                const count = booksInCell.length;
+                const canAssign = count < capacity;
+
+                target.dataset.count = String(count);
+                target.setAttribute('data-book-titles', booksInCell.map(b => b.title.toLowerCase()).join(' '));
+
+                if (canAssign) {
+                    target.setAttribute('data-slot-button', '');
+                    target.removeAttribute('data-filled-cell');
+                    target.className = assignableCellClass;
+                    target.title = 'Klik untuk assign buku';
+                    target.onclick = () => openModal(positionCode);
+                } else {
+                    target.removeAttribute('data-slot-button');
+                    target.setAttribute('data-filled-cell', '');
+                    target.className = fullCellClass;
+                    target.title = booksInCell.map(b => b.title).join(', ') || 'Slot penuh';
+                    target.onclick = () => openBookPopup(target);
+                }
+
+                const previewItems = booksInCell
+                    .slice(0, 3)
+                    .map(b => '<div class="truncate rounded px-1 py-0.5 text-[8px] ' + (canAssign ? 'bg-white/70' : 'bg-white/50') + ' w-full">' + b.title + '</div>')
+                    .join('');
+                const moreText = count > 3
+                    ? '<div class="text-[8px] ' + (canAssign ? 'text-primary-700' : 'text-primary-800') + '">+' + (count - 3) + ' buku lainnya</div>'
+                    : '';
+                const emptyText = count === 0 ? '<div class="text-[10px]">Empty</div>' : '';
+
+                target.innerHTML = '<div class="font-bold border-b ' + (canAssign ? 'border-gray-200' : 'border-primary-200') + ' w-full pb-0.5 mb-0.5">' + positionCode + '</div>'
+                    + '<div class="text-[10px] font-semibold">' + count + '/' + capacity + '</div>'
+                    + (count > 0
+                        ? '<div class="mt-1 flex w-full flex-col gap-0.5 ' + (canAssign ? 'pointer-events-none' : '') + '">' + previewItems + moreText + '</div>'
+                        : emptyText);
             };
 
             const markCellAssigned = (positionCode, bookId, title) => {
@@ -396,34 +430,13 @@
                 if (existing) existing.position_code = positionCode;
                 else allRackBooks.push({id: bookId, title: title, position_code: positionCode});
                 
-                const booksInCell = allRackBooks.filter(b => b.position_code === positionCode);
-                
-                target.removeAttribute('data-slot-button');
-                target.setAttribute('data-filled-cell', '');
-                target.setAttribute('data-book-titles', booksInCell.map(b => b.title.toLowerCase()).join(' '));
-                target.title = booksInCell.map(b => b.title).join(', ');
-                target.className = occupiedCellClass;
-                
-                let booksHtml = booksInCell.map(b => '<div class="truncate text-[9px] bg-white/50 rounded px-1 py-0.5 w-full">' + b.title + '</div>').join('');
-                target.innerHTML = '<div class="font-bold border-b border-primary-200 w-full pb-0.5 mb-0.5">' + positionCode + '</div><div class="flex flex-col gap-0.5 w-full">' + booksHtml + '</div>';
-                
-                target.onclick = () => openBookPopup(target);
+                renderCell(target);
             };
 
-            const markCellEmpty = (positionCode) => {
+            const refreshCell = (positionCode) => {
                 const target = rackGrid.querySelector('[data-position-code="' + positionCode + '"]');
                 if (!target) return;
-                
-                const booksInCell = allRackBooks.filter(b => b.position_code === positionCode);
-                if (booksInCell.length > 0) return;
-                
-                target.removeAttribute('data-book-titles');
-                target.removeAttribute('data-filled-cell');
-                target.setAttribute('data-slot-button', '');
-                target.title = 'Klik untuk assign buku';
-                target.className = emptyCellClass;
-                target.innerHTML = '<div class="font-bold border-b border-gray-200 w-full pb-0.5 mb-0.5">' + positionCode + '</div><div class="text-[10px]">Empty</div>';
-                target.onclick = () => openModal(positionCode);
+                renderCell(target);
             };
 
             const applyBookFilter = () => {
@@ -436,11 +449,14 @@
             };
 
             const updateMoveOptions = () => {
-                movePositionSelect.innerHTML = '<option value="">Select target empty slot</option>';
-                const slots = getEmptySlotButtons();
+                movePositionSelect.innerHTML = '<option value="">Select target available slot</option>';
+                const slots = getAvailableSlotButtons();
                 slots.forEach(s => {
                     const opt = document.createElement('option');
-                    opt.value = opt.textContent = s.dataset.positionCode;
+                    const count = Number(s.dataset.count || 0);
+                    const capacity = Number(s.dataset.capacity || 1);
+                    opt.value = s.dataset.positionCode;
+                    opt.textContent = s.dataset.positionCode + ' (' + count + '/' + capacity + ')';
                     movePositionSelect.appendChild(opt);
                 });
 
@@ -525,7 +541,7 @@
                 const title = opt.dataset.title;
                 try {
                     await postAssign(bookId, target);
-                    markCellEmpty(old);
+                    refreshCell(old);
                     markCellAssigned(target, Number(bookId), title);
                     updateMoveOptions();
                     highlightGrid();

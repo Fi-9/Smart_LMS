@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\LookupIsbnRequest;
 use App\Services\IsbnLookupService;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class IsbnLookupController extends Controller
 {
@@ -21,10 +22,9 @@ class IsbnLookupController extends Controller
         if (! $result) {
             return response()->json([
                 'message' => 'No book metadata found for the given ISBN.',
-            ], JsonResponse::HTTP_NOT_FOUND);
+            ], Response::HTTP_NOT_FOUND);
         }
 
         return response()->json($result);
     }
 }
-

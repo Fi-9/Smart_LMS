@@ -24,17 +24,17 @@
                  try {
                      const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
                      if (!response.ok) throw new Error();
-                     document.getElementById('book-detail-panel').innerHTML = await response.text();
+                     document.getElementById('detail-panel').innerHTML = await response.text();
                      
                      // Re-initialize any scripts within the newly loaded HTML
-                     Array.from(document.getElementById('book-detail-panel').querySelectorAll('script')).forEach(oldScript => {
+                     Array.from(document.getElementById('detail-panel').querySelectorAll('script')).forEach(oldScript => {
                         const newScript = document.createElement('script');
                         Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
                         newScript.appendChild(document.createTextNode(oldScript.innerHTML));
                         oldScript.parentNode.replaceChild(newScript, oldScript);
                      });
                  } catch (e) {
-                     document.getElementById('book-detail-panel').innerHTML = '<div class=\'rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700\'>Failed to load book detail.</div>';
+                     document.getElementById('detail-panel').innerHTML = '<div class=\'rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700\'>Failed to load book detail.</div>';
                  } finally {
                      this.isLoading = false;
                  }
@@ -225,9 +225,13 @@
 
         
         <section class="xl:col-span-6">
-            <div id="book-detail-panel" class="sticky top-6 transition-opacity duration-150" :class="isLoading ? 'opacity-50' : 'opacity-100'">
+            <div id="detail-panel" class="sticky top-6 transition-opacity duration-150" :class="isLoading ? 'opacity-50' : 'opacity-100'">
                 <?php if($selected_book): ?>
-                    <?php echo $__env->make('books.partials.detail_panel', ['book' => $selected_book, 'rack_mini_map' => $selected_book_rack_mini_map], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+                    <?php echo $__env->make('books.partials.detail_panel', [
+                        'book' => $selected_book,
+                        'rack_mini_map' => $selected_book_rack_mini_map,
+                        'compact_description' => true,
+                    ], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
                 <?php else: ?>
                     <?php if (isset($component)) { $__componentOriginal53747ceb358d30c0105769f8471417f6 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal53747ceb358d30c0105769f8471417f6 = $attributes; } ?>
@@ -259,7 +263,6 @@
         </section>
     </div>
 <?php $__env->stopSection(); ?>
-
 
 
 <?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\Users\renre\Smart_LMS\resources\views/books/index.blade.php ENDPATH**/ ?>

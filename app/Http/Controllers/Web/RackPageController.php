@@ -56,8 +56,8 @@ class RackPageController extends Controller
         $books = Book::query()->orderBy('title')->get(['id', 'title', 'rack_id', 'position_code']);
         $assignedBooksInRack = $rack->books()->orderBy('title')->get(['id', 'title', 'rack_id', 'position_code']);
         $grid = $this->rackService->buildGrid($rack);
-        $emptyPositions = collect($grid)
-            ->where('occupied', false)
+        $availablePositions = collect($grid)
+            ->where('is_full', false)
             ->pluck('code')
             ->values();
 
@@ -70,7 +70,7 @@ class RackPageController extends Controller
             'books' => $books,
             'unassigned_books' => Book::query()->unassigned()->orderBy('title')->get(['id', 'title', 'rack_id', 'position_code']),
             'assigned_books_in_rack' => $assignedBooksInRack,
-            'empty_positions' => $emptyPositions,
+            'available_positions' => $availablePositions,
             'has_books_in_rack' => $rack->books->isNotEmpty(),
         ]);
     }
