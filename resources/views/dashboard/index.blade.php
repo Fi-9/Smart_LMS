@@ -53,6 +53,37 @@
             ></canvas>
         </x-card>
     </div>
+
+    <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <x-card>
+            <p class="text-sm text-gray-500">AI Scan Today</p>
+            <h2 class="mt-2 text-3xl font-bold text-gray-900">{{ $stats['ai_scan_today']['total'] ?? 0 }}</h2>
+        </x-card>
+        <x-card>
+            <p class="text-sm text-gray-500">Success Rate</p>
+            <h2 class="mt-2 text-3xl font-bold text-primary-700">{{ $stats['ai_scan_today']['success_rate'] ?? 0 }}%</h2>
+        </x-card>
+        <x-card>
+            <p class="text-sm text-gray-500">Avg Latency</p>
+            <h2 class="mt-2 text-3xl font-bold text-gray-900">{{ $stats['ai_scan_today']['avg_latency_ms'] ?? 0 }} ms</h2>
+        </x-card>
+        <x-card>
+            <p class="text-sm text-gray-500">Source (Google/OL)</p>
+            <h2 class="mt-2 text-2xl font-bold text-gray-900">
+                {{ $stats['ai_scan_today']['source_distribution']['google'] ?? 0 }}
+                /
+                {{ $stats['ai_scan_today']['source_distribution']['openlibrary'] ?? 0 }}
+            </h2>
+        </x-card>
+        <x-card>
+            <p class="text-sm text-gray-500">Source (Web/AI)</p>
+            <h2 class="mt-2 text-2xl font-bold text-gray-900">
+                {{ $stats['ai_scan_today']['source_distribution']['websearch'] ?? 0 }}
+                /
+                {{ $stats['ai_scan_today']['source_distribution']['ai'] ?? 0 }}
+            </h2>
+        </x-card>
+    </div>
 @endsection
 
 @push('scripts')

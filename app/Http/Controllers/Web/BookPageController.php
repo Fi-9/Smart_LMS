@@ -55,6 +55,7 @@ class BookPageController extends Controller
         return view('books.show', [
             'book' => $book,
             'rack_mini_map' => $this->buildRackMiniMap($book),
+            'compact_description' => false,
         ]);
     }
 
@@ -65,6 +66,7 @@ class BookPageController extends Controller
         return view('books.partials.detail_panel', [
             'book' => $book,
             'rack_mini_map' => $this->buildRackMiniMap($book),
+            'compact_description' => true,
         ]);
     }
 

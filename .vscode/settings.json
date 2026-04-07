@@ -1,0 +1,6 @@
+﻿{
+  "php.validate.enable": false,
+  "files.associations": {
+    "*.blade.php": "blade"
+  }
+}

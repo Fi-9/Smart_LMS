@@ -1,5 +1,9 @@
+@php
+    $isCompactDescription = (bool) ($compact_description ?? true);
+    $descriptionText = $book->description ?? 'Deskripsi belum tersedia. Lengkapi melalui import ISBN untuk mengisi metadata otomatis.';
+@endphp
+
 <div class="animate-fade-in space-y-5">
-    {{-- TOP: Cover + Metadata --}}
     <x-card class="shadow-md transition-shadow hover:shadow-lg">
         <div class="flex flex-col gap-5 lg:flex-row">
             <img
@@ -52,7 +56,7 @@
                                     $row = substr($book->position_code, 0, 1);
                                     $col = substr($book->position_code, 1);
                                 @endphp
-                                {{ $book->rack->name }} → Row {{ $row }} → Column {{ $col }}
+                                {{ $book->rack->name }} -> Row {{ $row }} -> Column {{ $col }}
                             @else
                                 <span class="text-gray-400">Unassigned</span>
                             @endif
@@ -63,34 +67,31 @@
         </div>
     </x-card>
 
-    {{-- MIDDLE: 3 Cards --}}
-    <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
-        {{-- Location Card --}}
-        <x-card class="shadow-md transition-shadow hover:shadow-lg">
-            <h3 class="section-title">📍 Location</h3>
+    <div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <x-card class="shadow-md">
+            <h3 class="section-title">Location</h3>
             <p class="mt-2 text-lg font-bold text-gray-900">{{ $book->rack?->name ?? 'Unassigned' }}</p>
-            <p class="text-2xl font-black tracking-wide text-primary-600">{{ $book->position_code ?? '—' }}</p>
+            <p class="text-2xl font-black tracking-wide text-primary-600">{{ $book->position_code ?? '-' }}</p>
             @if($book->rack && $book->position_code)
                 @php
                     $row = substr($book->position_code, 0, 1);
                     $col = substr($book->position_code, 1);
                 @endphp
-                <p class="mt-1 text-xs text-gray-500">{{ $book->rack->name }} → Row {{ $row }} → Column {{ $col }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ $book->rack->name }} -> Row {{ $row }} -> Column {{ $col }}</p>
             @else
                 <p class="mt-1 text-xs text-gray-500">Buku belum ditempatkan di rak.</p>
             @endif
         </x-card>
 
-        {{-- QR Card --}}
-        <x-card class="shadow-md transition-shadow hover:shadow-lg" id="qr-card-container">
-            <h3 class="section-title">🔳 QR Code</h3>
-            <div class="mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-6">
+        <x-card class="shadow-md">
+            <h3 class="section-title">QR Code</h3>
+            <div id="qr-preview" class="mt-4 flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/40 p-4">
                 @if($book->qr_code || $book->qr_code_path)
-                    <img src="{{ $book->qr_code ?: $book->qr_code_path }}" alt="QR Code" class="h-40 w-40 object-contain shadow-sm">
-                    <p class="mt-3 text-[10px] font-medium uppercase tracking-wider text-gray-400">Scan to View</p>
+                    <img src="{{ $book->qr_code ?: $book->qr_code_path }}" alt="QR Code" class="h-40 w-40 rounded-md border border-gray-100 bg-white p-1 object-contain">
+                    <p class="mt-2 text-[10px] font-medium uppercase tracking-wider text-gray-400">Scan to View</p>
                 @else
-                    <div class="flex h-40 w-40 items-center justify-center rounded-lg bg-gray-100 text-gray-400">
-                        <span>🔳</span>
+                    <div class="flex h-28 w-28 items-center justify-center rounded-lg bg-gray-100 text-gray-400">
+                        <span class="text-xs font-semibold">No QR</span>
                     </div>
                     <button
                         type="button"
@@ -98,82 +99,96 @@
                         data-generate-url="{{ route('qr.generate-single', $book->id) }}"
                         class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700"
                     >
-                        ➕ Generate QR
+                        + Generate QR
                     </button>
                 @endif
             </div>
         </x-card>
 
-        {{-- Description Card --}}
-        <x-card class="shadow-md transition-shadow hover:shadow-lg">
-            <h3 class="section-title">📝 Description</h3>
-            <p class="mt-2 text-sm leading-relaxed text-gray-600">
-                {{ $book->description ?? 'Deskripsi belum tersedia. Lengkapi melalui import ISBN untuk mengisi metadata otomatis.' }}
-            </p>
+        <x-card class="shadow-md">
+            <h3 class="section-title">Description</h3>
+            @if($isCompactDescription)
+                <p class="description-clamp mt-2 text-sm leading-relaxed text-gray-600">
+                    {{ $descriptionText }}
+                </p>
+                <div class="mt-3">
+                    <a href="{{ route('books.web.show', $book->id) }}" class="inline-flex items-center gap-1 text-xs font-semibold text-primary-700 transition hover:text-primary-800">
+                        Lihat deskripsi lengkap
+                    </a>
+                </div>
+            @else
+                <p class="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-600">
+                    {{ $descriptionText }}
+                </p>
+            @endif
         </x-card>
     </div>
 
-    {{-- RACK MINI MAP --}}
-    <x-card class="shadow-md">
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 class="section-title">🗄️ Rack Mini Map</h3>
-            <div class="flex items-center gap-3 text-xs text-gray-500">
-                <span class="inline-flex items-center gap-1"><span class="h-3 w-3 rounded bg-gray-200"></span> Empty</span>
-                <span class="inline-flex items-center gap-1"><span class="h-3 w-3 rounded bg-primary-400"></span> Filled</span>
-                <span class="inline-flex items-center gap-1"><span class="h-3 w-3 rounded bg-primary-800"></span> Current</span>
+    <!-- ROW 2: Rack Mini Map -->
+    <x-card class="flex flex-col shadow-sm transition-shadow hover:shadow-md border border-gray-100">
+        <div class="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-3">
+            <div class="flex items-center gap-2">
+                <svg class="h-3.5 w-3.5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0113.5 18v-2.25z" />
+                </svg>
+                <h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Rack Mini Map</h3>
+            </div>
+            <div class="flex items-center gap-3 text-[10px] font-medium text-gray-500">
+                <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded bg-gray-200"></span> Empty</span>
+                <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-primary-300"></span> Filled</span>
+                <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-primary-800"></span> Current</span>
             </div>
         </div>
 
-        @if(!$rack_mini_map)
-            <div class="rounded-xl border border-dashed border-gray-300 py-8 text-center">
-                <p class="text-3xl">🗄️</p>
-                <p class="mt-2 text-sm font-medium text-gray-700">Buku belum ditempatkan di rack</p>
-                <p class="mt-1 text-xs text-gray-500">Assign buku ke rack untuk melihat mini map.</p>
-                <a href="{{ route('racks.index') }}" class="mt-3 inline-flex items-center gap-1 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">📍 Assign ke Rack</a>
-            </div>
-        @else
-            <p class="mb-3 text-sm font-medium text-gray-700">{{ $rack_mini_map['rack_name'] }}</p>
-
-            {{-- Column Labels --}}
-            @if(isset($rack_mini_map['matrix'][0]))
-                <div class="mb-1 flex items-center gap-2">
-                    <div class="w-6"></div>
-                    <div class="grid gap-2 flex-1" {!! 'style="grid-template-columns: repeat(' . count($rack_mini_map['matrix'][0]['cells']) . ', minmax(36px, 1fr));"' !!}>
-                        @foreach($rack_mini_map['matrix'][0]['cells'] as $cell)
-                            @php $colNum = substr($cell['code'], 1); @endphp
-                            <div class="flex items-center justify-center text-[10px] font-bold text-gray-400">{{ $colNum }}</div>
-                        @endforeach
-                    </div>
+        <div class="flex-1 rounded-xl flex flex-col justify-center min-h-[12rem] bg-white">
+            @if(!$rack_mini_map)
+                <div class="flex flex-col items-center justify-center py-8 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                    <p class="text-sm font-medium text-gray-700">Buku belum ditempatkan</p>
+                    <p class="mt-1 text-xs text-gray-500">Assign buku ke rack untuk melihat mini map.</p>
+                    <a href="{{ route('racks.index') }}" class="mt-3 inline-flex items-center gap-1 rounded-lg bg-primary-800 px-4 py-1.5 text-[11px] font-medium text-white hover:bg-primary-700 shadow-sm hover:shadow">Assign ke Rack</a>
                 </div>
-            @endif
+            @else
+                <p class="mb-5 text-xs font-bold text-gray-800">{{ $rack_mini_map['rack_name'] }}</p>
 
-            <div class="space-y-2">
-                @foreach($rack_mini_map['matrix'] as $row)
-                    <div class="flex items-center gap-2">
-                        <div class="w-6 text-center text-xs font-semibold text-gray-500">{{ $row['label'] }}</div>
-                        <div class="grid gap-2 flex-1" {!! 'style="grid-template-columns: repeat(' . count($row['cells']) . ', minmax(36px, 1fr));"' !!}>
-                            @foreach($row['cells'] as $cell)
-                                <div
-                                    title="{{ implode(', ', array_column($cell['books'], 'title')) ?: 'Empty' }}"
-                                    class="flex h-9 items-center justify-center rounded-lg border text-[10px] font-bold transition-all duration-200
-                                        {{ $cell['state'] === 'current' ? 'border-primary-600 bg-primary-800 text-white shadow-md scale-110' : '' }}
-                                        {{ $cell['state'] === 'filled' ? 'border-primary-300 bg-primary-200 text-primary-800 hover:bg-primary-300' : '' }}
-                                        {{ $cell['state'] === 'empty' ? 'border-gray-200 bg-gray-100 text-gray-400' : '' }}
-                                    "
-                                >
-                                    {{ $cell['code'] }}
-                                </div>
+                @if(isset($rack_mini_map['matrix'][0]))
+                    <div class="mb-1 flex items-center gap-2">
+                        <div class="w-6"></div>
+                        <div class="grid gap-2 flex-1" {!! 'style="grid-template-columns: repeat(' . count($rack_mini_map['matrix'][0]['cells']) . ', 1fr);"' !!}>
+                            @foreach($rack_mini_map['matrix'][0]['cells'] as $cell)
+                                @php $colNum = substr($cell['code'], 1); @endphp
+                                <div class="flex items-center justify-center text-[10px] font-bold text-gray-400">{{ $colNum }}</div>
                             @endforeach
                         </div>
                     </div>
-                @endforeach
-            </div>
-        @endif
+                @endif
+
+                <div class="space-y-2">
+                    @foreach($rack_mini_map['matrix'] as $row)
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 text-center text-xs font-bold text-gray-500">{{ $row['label'] }}</div>
+                            <div class="grid gap-2 flex-1" {!! 'style="grid-template-columns: repeat(' . count($row['cells']) . ', 1fr);"' !!}>
+                                @foreach($row['cells'] as $cell)
+                                    <div
+                                        title="{{ implode(', ', array_column($cell['books'], 'title')) ?: 'Empty' }}"
+                                        class="flex h-9 items-center justify-center rounded-md border text-[10px] font-bold shadow-sm transition-all duration-200
+                                            {{ $cell['state'] === 'current' ? 'border-primary-600 bg-primary-800 text-white scale-110 z-10 ring-2 ring-primary-500/30 ring-offset-1' : '' }}
+                                            {{ $cell['state'] === 'filled' ? 'border-primary-300 bg-primary-100 text-primary-800 hover:bg-primary-200 cursor-help' : '' }}
+                                            {{ $cell['state'] === 'empty' ? 'border-dashed border-gray-300 bg-gray-50 text-gray-400 hover:bg-gray-100' : '' }}
+                                        "
+                                    >
+                                        {{ $cell['code'] }}
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
     </x-card>
 
-    {{-- BOTTOM: Actions --}}
     <x-card class="shadow-md">
-        <h3 class="section-title">⚡ Actions</h3>
+        <h3 class="section-title">Actions</h3>
         <div class="mt-3 flex flex-wrap gap-2">
             @if($book->isAvailable())
                 <button
@@ -181,7 +196,7 @@
                     data-open-borrow-modal
                     class="inline-flex items-center gap-1.5 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
                 >
-                    📋 Borrow Book
+                    Borrow Book
                 </button>
             @elseif($book->isBorrowed() && $book->activeBorrowing)
                 <button
@@ -190,28 +205,27 @@
                     data-return-url="{{ route('borrowings.return', $book->activeBorrowing->id) }}"
                     class="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-amber-700"
                 >
-                    ↩️ Return Book
+                    Return Book
                 </button>
             @endif
 
             @if($book->rack_id)
-                <a href="{{ route('racks.show', $book->rack_id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">📍 Move</a>
+                <a href="{{ route('racks.show', $book->rack_id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Move</a>
             @else
-                <a href="{{ route('racks.index') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">📍 Assign</a>
+                <a href="{{ route('racks.index') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Assign</a>
             @endif
             @if($book->qr_code || $book->qr_code_path)
-                <a href="{{ route('qr.print', ['selected_ids' => [$book->id]]) }}" target="_blank" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">🖨️ Print QR</a>
+                <a href="{{ route('qr.print', ['selected_ids' => [$book->id]]) }}" target="_blank" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Print QR</a>
             @endif
-            <a href="{{ route('books.web.show', $book->id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">📄 Full Detail</a>
+            <a href="{{ route('books.web.show', $book->id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Full Detail</a>
         </div>
     </x-card>
 
-    {{-- Borrow Modal --}}
     <div id="borrow-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
         <div class="w-full max-w-md animate-slide-up rounded-2xl bg-white p-6 shadow-2xl">
             <div class="mb-4 flex items-center justify-between">
                 <h3 class="text-lg font-bold text-gray-900">Pinjamkan Buku</h3>
-                <button type="button" data-close-borrow-modal class="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600">✕</button>
+                <button type="button" data-close-borrow-modal class="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600">x</button>
             </div>
 
             <div class="mb-4 rounded-lg bg-gray-50 p-3">
@@ -244,13 +258,15 @@
 
 <script>
 (() => {
-    const panel = document.getElementById('book-detail-panel');
+    const panel = document.getElementById('detail-panel');
+    if (!panel) return;
+
     const generateBtn = panel.querySelector('#generate-qr-btn');
     if (generateBtn) {
         generateBtn.addEventListener('click', async () => {
             const url = generateBtn.dataset.generateUrl;
             generateBtn.disabled = true;
-            generateBtn.innerHTML = '⏳ Generating...';
+            generateBtn.innerHTML = 'Generating...';
 
             try {
                 const response = await fetch(url, {
@@ -262,21 +278,26 @@
                     },
                 });
 
-                if (!response.ok) throw new Error('Generate failed');
-
                 const data = await response.json();
-                generateBtn.innerHTML = '✅ Generated!';
-                
-                if (window.showGlobalToast) window.showGlobalToast('✅ ' + data.message);
-                window.setTimeout(() => window.location.reload(), 800);
+                if (!response.ok || !data?.qr_code) throw new Error(data?.message || 'Generate failed');
+
+                const qrPreview = panel.querySelector('#qr-preview');
+                if (qrPreview) {
+                    qrPreview.innerHTML = `
+                        <img src="${data.qr_code}" alt="QR Code" class="h-40 w-40 rounded-md border border-gray-100 bg-white p-1 object-contain">
+                        <p class="mt-2 text-[10px] font-medium uppercase tracking-wider text-gray-400">Scan to View</p>
+                    `;
+                }
+
+                if (window.showGlobalToast) window.showGlobalToast('OK ' + data.message);
             } catch (error) {
-                generateBtn.innerHTML = '❌ Failed – Retry';
+                generateBtn.innerHTML = 'Failed - Retry';
                 generateBtn.disabled = false;
+                if (window.showGlobalToast) window.showGlobalToast('Error ' + (error.message || 'Failed generating QR code.'));
             }
         });
     }
 
-    // Borrow Flow
     const borrowModal = panel.querySelector('#borrow-modal');
     const openBorrowBtn = panel.querySelector('[data-open-borrow-modal]');
     const closeBorrowBtns = panel.querySelectorAll('[data-close-borrow-modal]');
@@ -304,7 +325,7 @@
     borrowForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         submitBorrowBtn.disabled = true;
-        submitBorrowBtn.innerHTML = '⏳ Processing...';
+        submitBorrowBtn.innerHTML = 'Processing...';
         document.querySelectorAll('[id^="error-"]').forEach(el => el.classList.add('hidden'));
 
         try {
@@ -341,8 +362,7 @@
             }
 
             closeBorrowModal();
-            const toast = window.showGlobalToast || (msg => alert(msg));
-            if (window.showGlobalToast) window.showGlobalToast('✅ ' + result.message);
+            if (window.showGlobalToast) window.showGlobalToast('OK ' + result.message);
             window.setTimeout(() => window.location.reload(), 800);
         } catch (error) {
             alert('Terjadi kesalahan jaringan.');
@@ -351,14 +371,13 @@
         }
     });
 
-    // Return Flow
     const returnBtn = panel.querySelector('[data-return-book-btn]');
     if (returnBtn) {
         returnBtn.addEventListener('click', async () => {
             if (!confirm('Konfirmasi pengembalian buku ini?')) return;
 
             returnBtn.disabled = true;
-            returnBtn.innerHTML = '⏳ Returning...';
+            returnBtn.innerHTML = 'Returning...';
 
             try {
                 const response = await fetch(returnBtn.dataset.returnUrl, {
@@ -374,14 +393,25 @@
 
                 if (!response.ok) throw new Error(result.message || 'Gagal mengembalikan buku');
 
-                if (window.showGlobalToast) window.showGlobalToast('✅ ' + result.message);
+                if (window.showGlobalToast) window.showGlobalToast('OK ' + result.message);
                 else alert(result.message);
 
-                window.setTimeout(() => window.location.reload(), 800);
+                const panelUrl = '{{ route('books.web.panel', $book->id) }}';
+                const panelResponse = await fetch(panelUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+                if (panelResponse.ok) {
+                    document.getElementById('detail-panel').innerHTML = await panelResponse.text();
+
+                    Array.from(document.getElementById('detail-panel').querySelectorAll('script')).forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                        newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
+                }
             } catch (error) {
                 alert(error.message);
                 returnBtn.disabled = false;
-                returnBtn.innerHTML = '↩️ Return Book';
+                returnBtn.innerHTML = 'Return Book';
             }
         });
     }

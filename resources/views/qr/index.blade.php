@@ -7,7 +7,7 @@
     </div>
 
     <x-card class="mb-6">
-        <form method="GET" action="{{ route('qr.generate') }}" class="flex flex-wrap items-end gap-3">
+        <form method="GET" action="{{ route('qr.index') }}" class="flex flex-wrap items-end gap-3">
             <div>
                 <label class="form-label">Rack</label>
                 <select name="rack_id" class="form-input">

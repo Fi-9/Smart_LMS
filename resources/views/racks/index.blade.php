@@ -14,7 +14,7 @@
                 <input name="columns" type="number" min="1" max="10" placeholder="Cols (1-10)" class="form-input" required>
             </div>
             <div class="grid grid-cols-2 gap-2">
-                <input name="capacity_per_slot" type="number" min="1" placeholder="Slot Capacity" class="form-input" value="1" required>
+                <input name="capacity_per_slot" type="number" min="1" max="100" placeholder="Slot Capacity" class="form-input" value="50" required>
                 <input name="column_category" placeholder="Col Category (Optional)" class="form-input">
             </div>
             <x-button type="submit" variant="success">Create Rack</x-button>
@@ -43,7 +43,7 @@
                         <span class="inline-flex items-center gap-1"><span class="h-3 w-3 rounded bg-primary-400"></span> Occupied</span>
                     </div>
 
-                    <div class="grid gap-2 mb-3 max-w-full overflow-x-auto pb-2" {!! 'style="grid-template-columns: repeat(' . $card['rack']->columns . ', minmax(60px, 1fr));"' !!}>
+                    <div class="grid gap-2 mb-3 max-w-full overflow-x-auto pb-2" {!! 'style="grid-template-columns: repeat(' . $card['rack']->columns . ', 1fr);"' !!}>
                         @foreach($card['grid'] as $cell)
                             <div class="rounded-lg border p-2 text-center text-xs transition-all duration-200
                                 {{ $cell['occupied']
@@ -53,10 +53,14 @@
                             >
                                 <div class="font-bold border-b {{ $cell['occupied'] ? 'border-primary-200' : 'border-gray-200' }} w-full pb-0.5 mb-0.5">{{ $cell['code'] }}</div>
                                 @if($cell['occupied'])
-                                    <div class="flex flex-col gap-0.5 w-full max-h-16 overflow-y-auto no-scrollbar">
-                                        @foreach($cell['books'] as $b)
+                                    <div class="mb-1 text-[10px] font-semibold">{{ $cell['count'] }}/{{ $cell['capacity'] }}</div>
+                                    <div class="flex flex-col gap-0.5 w-full">
+                                        @foreach(array_slice($cell['books'], 0, 3) as $b)
                                             <div class="truncate text-[9px] bg-white/50 rounded px-1 py-0.5 w-full">{{ $b['title'] }}</div>
                                         @endforeach
+                                        @if($cell['count'] > 3)
+                                            <div class="text-[9px] text-primary-700">+{{ $cell['count'] - 3 }} buku lainnya</div>
+                                        @endif
                                     </div>
                                 @else
                                     <div class="mt-0.5 text-[10px]">Empty</div>

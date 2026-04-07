@@ -40,10 +40,32 @@
                         {{ $item['label'] }}
                     </a>
                 @endforeach
+
+                <a href="{{ route('settings.index') }}"
+                   class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 transition-all duration-150
+                          {{ request()->routeIs('settings.*') ? 'bg-white font-semibold text-primary-800 shadow-sm' : 'text-primary-100 hover:bg-white/10' }}"
+                >
+                    <span class="text-sm">[ ]</span>
+                    Settings
+                </a>
             </nav>
 
             <div class="border-t border-primary-700 px-5 py-4">
-                <p class="text-xs text-primary-300">SLiMS+ QR v1.0</p>
+                <div class="space-y-3">
+                    <div>
+                        <p class="text-sm font-semibold text-white">{{ auth()->user()->name }}</p>
+                        <p class="text-xs uppercase tracking-wide text-primary-300">{{ auth()->user()->role->value }}</p>
+                    </div>
+
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-white/15 px-3 py-2 text-sm font-medium text-primary-100 transition hover:bg-white/10">
+                            Logout
+                        </button>
+                    </form>
+
+                    <p class="text-xs text-primary-300">SLiMS+ QR v1.0</p>
+                </div>
             </div>
         </aside>
 

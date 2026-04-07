@@ -26,17 +26,17 @@
                  try {
                      const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
                      if (!response.ok) throw new Error();
-                     document.getElementById('book-detail-panel').innerHTML = await response.text();
+                     document.getElementById('detail-panel').innerHTML = await response.text();
                      
                      // Re-initialize any scripts within the newly loaded HTML
-                     Array.from(document.getElementById('book-detail-panel').querySelectorAll('script')).forEach(oldScript => {
+                     Array.from(document.getElementById('detail-panel').querySelectorAll('script')).forEach(oldScript => {
                         const newScript = document.createElement('script');
                         Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
                         newScript.appendChild(document.createTextNode(oldScript.innerHTML));
                         oldScript.parentNode.replaceChild(newScript, oldScript);
                      });
                  } catch (e) {
-                     document.getElementById('book-detail-panel').innerHTML = '<div class=\'rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700\'>Failed to load book detail.</div>';
+                     document.getElementById('detail-panel').innerHTML = '<div class=\'rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700\'>Failed to load book detail.</div>';
                  } finally {
                      this.isLoading = false;
                  }
@@ -134,9 +134,13 @@
 
         {{-- RIGHT PANEL: Book Detail (60%) --}}
         <section class="xl:col-span-6">
-            <div id="book-detail-panel" class="sticky top-6 transition-opacity duration-150" :class="isLoading ? 'opacity-50' : 'opacity-100'">
+            <div id="detail-panel" class="sticky top-6 transition-opacity duration-150" :class="isLoading ? 'opacity-50' : 'opacity-100'">
                 @if($selected_book)
-                    @include('books.partials.detail_panel', ['book' => $selected_book, 'rack_mini_map' => $selected_book_rack_mini_map])
+                    @include('books.partials.detail_panel', [
+                        'book' => $selected_book,
+                        'rack_mini_map' => $selected_book_rack_mini_map,
+                        'compact_description' => true,
+                    ])
                 @else
                     <x-card>
                         <div class="py-12 text-center">
@@ -150,5 +154,4 @@
         </section>
     </div>
 @endsection
-
 

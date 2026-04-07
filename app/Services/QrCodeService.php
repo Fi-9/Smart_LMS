@@ -4,18 +4,20 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Storage;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Throwable;
 
 class QrCodeService
 {
     public function generateBookQrPath(int $bookId): string
     {
-        $relativePath = "qrcodes/book-{$bookId}.png";
+        $targetUrl = route('books.web.show', $bookId);
+        $qrPayload = $this->buildQrPayload($targetUrl);
+        $relativePath = "qrcodes/book-{$bookId}.{$qrPayload['extension']}";
         $publicPath = "storage/{$relativePath}";
-        $targetUrl = route('books.public.show', $bookId);
 
         Storage::disk('public')->put(
             $relativePath,
-            QrCode::format('png')->size(300)->errorCorrection('H')->generate($targetUrl)
+            $qrPayload['raw']
         );
 
         return "/{$publicPath}";
@@ -23,14 +25,34 @@ class QrCodeService
 
     public function generateBase64(int $bookId): string
     {
-        $targetUrl = route('books.public.show', $bookId);
-        $qrCode = QrCode::format('png')
-            ->size(300)
-            ->margin(1)
-            ->errorCorrection('H')
-            ->generate($targetUrl);
-        
-        return 'data:image/png;base64,' . base64_encode($qrCode);
+        $targetUrl = route('books.web.show', $bookId);
+        $qrPayload = $this->buildQrPayload($targetUrl);
+
+        return 'data:' . $qrPayload['mime'] . ';base64,' . base64_encode($qrPayload['raw']);
+    }
+
+    private function buildQrPayload(string $targetUrl): array
+    {
+        try {
+            return [
+                'raw' => QrCode::format('png')
+                    ->size(300)
+                    ->margin(1)
+                    ->errorCorrection('H')
+                    ->generate($targetUrl),
+                'mime' => 'image/png',
+                'extension' => 'png',
+            ];
+        } catch (Throwable) {
+            return [
+                'raw' => QrCode::format('svg')
+                    ->size(300)
+                    ->margin(1)
+                    ->errorCorrection('H')
+                    ->generate($targetUrl),
+                'mime' => 'image/svg+xml',
+                'extension' => 'svg',
+            ];
+        }
     }
 }
-

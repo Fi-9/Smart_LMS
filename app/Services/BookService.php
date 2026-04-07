@@ -168,7 +168,7 @@ class BookService
         $bookIds = $query->pluck('id')->all();
 
         foreach ($bookIds as $bookId) {
-            GenerateBookQrCodeJob::dispatch((int) $bookId);
+            GenerateBookQrCodeJob::dispatchSync((int) $bookId);
         }
 
         return count($bookIds);
