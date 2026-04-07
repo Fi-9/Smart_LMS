@@ -9,6 +9,44 @@ use Illuminate\Support\Facades\Log;
 
 class IsbnLookupService
 {
+    public function lookupGoogleByIsbnOnly(string $isbn): ?array
+    {
+        $normalizedIsbn = $this->normalizeIsbn($isbn);
+        if (! $normalizedIsbn) {
+            return null;
+        }
+
+        $cacheKey = 'book_lookup:google:isbn:' . $normalizedIsbn;
+
+        return $this->cachedNullableLookup($cacheKey, fn () => $this->lookupGoogleByIsbn($normalizedIsbn), 'google');
+    }
+
+    public function searchGoogleByTitleAuthorOnly(?string $title, ?string $author): ?array
+    {
+        $cleanTitle = $this->clean($title);
+        $cleanAuthor = $this->clean($author);
+
+        if (! $cleanTitle) {
+            return null;
+        }
+
+        $cacheKey = 'book_lookup:google:title_author:' . sha1(strtolower(($cleanTitle ?? '') . '|' . ($cleanAuthor ?? '')));
+
+        return $this->cachedNullableLookup($cacheKey, function () use ($cleanTitle, $cleanAuthor) {
+            $exact = $this->lookupGoogleByTitleAuthor($cleanTitle, $cleanAuthor);
+            if ($exact && $this->isCandidateRelevant($exact, $cleanTitle, 0.48)) {
+                return $exact;
+            }
+
+            $titleOnly = $this->lookupGoogleByTitleAuthor($cleanTitle, null);
+            if ($titleOnly && $this->isCandidateRelevant($titleOnly, $cleanTitle, 0.48)) {
+                return $titleOnly;
+            }
+
+            return null;
+        }, 'google');
+    }
+
     public function lookup(string $isbn): ?array
     {
         $metadata = $this->lookupByIsbn($isbn);
@@ -127,7 +165,7 @@ class IsbnLookupService
             }
 
             return $best;
-        });
+        }, 'google_openlibrary');
     }
 
     private function mergeMissingMetadataFields(array $primary, ?array $secondary): array
@@ -145,7 +183,7 @@ class IsbnLookupService
         return $primary;
     }
 
-    private function cachedNullableLookup(string $key, \Closure $resolver): ?array
+    private function cachedNullableLookup(string $key, \Closure $resolver, string $provider = 'google_openlibrary'): ?array
     {
         $cached = Cache::get($key);
         if (is_array($cached) && array_key_exists('hit', $cached)) {
@@ -155,7 +193,7 @@ class IsbnLookupService
 
             if (! $missingDescription) {
                 Log::info('book_lookup.cache', [
-                    'provider' => 'google_openlibrary',
+                    'provider' => $provider,
                     'cache_key' => $key,
                     'cache_status' => 'hit',
                     'resolved' => (bool) ($cached['hit'] ?? false),
@@ -165,7 +203,7 @@ class IsbnLookupService
             }
 
             Log::info('book_lookup.cache', [
-                'provider' => 'google_openlibrary',
+                'provider' => $provider,
                 'cache_key' => $key,
                 'cache_status' => 'refresh_missing_description',
                 'resolved' => (bool) ($cached['hit'] ?? false),
@@ -182,7 +220,7 @@ class IsbnLookupService
         );
 
         Log::info('book_lookup.cache', [
-            'provider' => 'google_openlibrary',
+            'provider' => $provider,
             'cache_key' => $key,
             'cache_status' => 'miss',
             'resolved' => $hit,

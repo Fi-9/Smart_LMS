@@ -4,7 +4,9 @@ namespace App\Services;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Database\QueryException;
 
 class AiInfrastructureService
 {
@@ -90,6 +92,7 @@ class AiInfrastructureService
             return [
                 'ollama' => $this->checkOllama($summary),
                 'websearch' => $this->checkWebsearch($summary),
+                'queue_worker' => $this->checkQueueWorker(),
             ];
         });
     }
@@ -207,6 +210,59 @@ class AiInfrastructureService
             'status' => 'ok',
             'endpoint' => rtrim($baseUrl, '/') . '/search',
             'detail' => 'Tavily siap dipakai karena API key sudah diatur.',
+        ];
+    }
+
+    private function checkQueueWorker(): array
+    {
+        $queueConnection = (string) config('queue.default', 'database');
+        $workerCommand = 'php artisan queue:work ' . $queueConnection . ' --queue=ai-scan --tries=1 --sleep=1';
+
+        try {
+            $pendingCount = DB::table('jobs')->where('queue', 'ai-scan')->count();
+            $oldestPending = DB::table('jobs')
+                ->where('queue', 'ai-scan')
+                ->orderBy('available_at')
+                ->value('available_at');
+        } catch (QueryException) {
+            return [
+                'service' => 'Queue Worker',
+                'status' => 'disabled',
+                'endpoint' => 'queue:' . $queueConnection,
+                'detail' => 'Tabel jobs belum tersedia atau queue database belum siap.',
+                'pending_jobs' => 0,
+                'oldest_wait_seconds' => 0,
+                'command' => $workerCommand,
+            ];
+        }
+
+        if ((int) $pendingCount === 0) {
+            return [
+                'service' => 'Queue Worker',
+                'status' => 'ok',
+                'endpoint' => 'queue:' . $queueConnection,
+                'detail' => 'Tidak ada job ai-scan yang menunggu. Worker tampak idle atau queue bersih.',
+                'pending_jobs' => 0,
+                'oldest_wait_seconds' => 0,
+                'command' => $workerCommand,
+            ];
+        }
+
+        $waitSeconds = 0;
+        if (is_numeric($oldestPending)) {
+            $waitSeconds = max(0, now()->timestamp - (int) $oldestPending);
+        }
+
+        return [
+            'service' => 'Queue Worker',
+            'status' => $waitSeconds >= 20 ? 'warning' : 'ok',
+            'endpoint' => 'queue:' . $queueConnection,
+            'detail' => $waitSeconds >= 20
+                ? "Ada {$pendingCount} job ai-scan menunggu {$waitSeconds} detik. Worker kemungkinan belum jalan."
+                : "Ada {$pendingCount} job ai-scan di antrian dan masih dalam ambang tunggu normal.",
+            'pending_jobs' => (int) $pendingCount,
+            'oldest_wait_seconds' => $waitSeconds,
+            'command' => $workerCommand,
         ];
     }
 

@@ -6,6 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 use RuntimeException;
 
@@ -63,15 +64,17 @@ class OllamaService
 
         return [
             'images' => $normalizedImages,
-            'best' => [
-                'isbn' => $this->normalizeIsbn($best['isbn'] ?? null),
-                'title' => $this->stringOrNull($best['title'] ?? null),
-                'author' => $this->stringOrNull($best['author'] ?? null),
-                'category' => $this->stringOrNull($best['category'] ?? null),
-                'description' => $this->stringOrNull($best['description'] ?? null),
-                'front_image_index' => isset($best['front_image_index']) && is_numeric($best['front_image_index'])
-                    ? (int) $best['front_image_index']
-                    : null,
+                'best' => [
+                    'isbn' => $this->normalizeIsbn($best['isbn'] ?? null),
+                    'title' => $this->stringOrNull($best['title'] ?? null),
+                    'author' => $this->stringOrNull($best['author'] ?? null),
+                    'category' => $this->stringOrNull($best['category'] ?? null),
+                    'description' => $this->stringOrNull($best['description'] ?? null),
+                    'publisher' => $this->stringOrNull($best['publisher'] ?? null),
+                    'language' => $this->stringOrNull($best['language'] ?? null),
+                    'front_image_index' => isset($best['front_image_index']) && is_numeric($best['front_image_index'])
+                        ? (int) $best['front_image_index']
+                        : null,
             ],
         ];
     }
@@ -97,9 +100,14 @@ class OllamaService
                 'temperature' => 0,
                 'top_p' => 0.1,
                 'seed' => 42,
-                'num_predict' => 320,
+                'num_predict' => 600,
             ],
         ];
+
+        Log::debug('[OllamaService] Starting translation', [
+            'model' => $model,
+            'text_length' => strlen($content),
+        ]);
 
         try {
             $response = Http::connectTimeout($connectTimeout)
@@ -109,6 +117,10 @@ class OllamaService
                 ->post($baseUrl . '/api/generate', $payload)
                 ->throw();
         } catch (ConnectionException|RequestException $e) {
+            Log::error('[OllamaService] Translation request failed', [
+                'model' => $model,
+                'error' => $e->getMessage(),
+            ]);
             throw new RuntimeException(
                 sprintf('Ollama text request failed for model [%s] at [%s]: %s', $model, $baseUrl, $e->getMessage()),
                 0,
@@ -117,11 +129,26 @@ class OllamaService
         }
 
         $translated = trim((string) $response->json('response', ''));
+
+        // Strip Qwen3.5 thinking tags if present
+        $translated = preg_replace('/<think>.*?<\/think>/s', '', $translated) ?? $translated;
+        $translated = trim($translated);
+
+        Log::debug('[OllamaService] Translation result', [
+            'model' => $model,
+            'result_length' => strlen($translated),
+            'preview' => mb_substr($translated, 0, 200),
+        ]);
+
         if ($translated === '') {
             return null;
         }
 
-        return trim($translated, "\" \n\r\t");
+        $translated = trim($translated, "\" \n\r\t");
+        $translated = preg_replace('/^(terjemahan|hasil terjemahan)\s*:\s*/i', '', $translated) ?? $translated;
+        $translated = trim($translated);
+
+        return $translated !== '' ? $translated : null;
     }
 
     /**
@@ -143,21 +170,12 @@ class OllamaService
             'stream' => false,
             'prompt' => $this->buildWebDescriptionPrompt($title, $author, $contexts),
             'keep_alive' => '20m',
-            'format' => [
-                'type' => 'object',
-                'properties' => [
-                    'description' => ['type' => ['string', 'null']],
-                    'confidence' => ['type' => 'number'],
-                    'source_url' => ['type' => ['string', 'null']],
-                ],
-                'required' => ['description', 'confidence', 'source_url'],
-                'additionalProperties' => false,
-            ],
+            'format' => 'json',
             'options' => [
                 'temperature' => 0,
                 'top_p' => 0.1,
                 'seed' => 42,
-                'num_predict' => 360,
+                'num_predict' => 512,
             ],
         ];
 
@@ -209,58 +227,12 @@ class OllamaService
                 $images
             ),
             'keep_alive' => '20m',
-            'format' => [
-                'type' => 'object',
-                'properties' => [
-                    'images' => [
-                        'type' => 'array',
-                        'items' => [
-                            'type' => 'object',
-                            'properties' => [
-                                'index' => ['type' => ['integer', 'null']],
-                                'view' => ['type' => 'string'],
-                                'isbn' => ['type' => ['string', 'null']],
-                                'title' => ['type' => ['string', 'null']],
-                                'author' => ['type' => ['string', 'null']],
-                                'category' => ['type' => ['string', 'null']],
-                                'cover_box' => [
-                                    'type' => ['object', 'null'],
-                                    'properties' => [
-                                        'x' => ['type' => ['number', 'null']],
-                                        'y' => ['type' => ['number', 'null']],
-                                        'w' => ['type' => ['number', 'null']],
-                                        'h' => ['type' => ['number', 'null']],
-                                    ],
-                                    'required' => ['x', 'y', 'w', 'h'],
-                                    'additionalProperties' => false,
-                                ],
-                            ],
-                            'required' => ['index', 'view', 'isbn', 'title', 'author', 'category', 'cover_box'],
-                            'additionalProperties' => false,
-                        ],
-                    ],
-                    'best' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'isbn' => ['type' => ['string', 'null']],
-                            'title' => ['type' => ['string', 'null']],
-                            'author' => ['type' => ['string', 'null']],
-                            'category' => ['type' => ['string', 'null']],
-                            'description' => ['type' => ['string', 'null']],
-                            'front_image_index' => ['type' => ['integer', 'null']],
-                        ],
-                        'required' => ['isbn', 'title', 'author', 'category', 'description', 'front_image_index'],
-                        'additionalProperties' => false,
-                    ],
-                ],
-                'required' => ['images', 'best'],
-                'additionalProperties' => false,
-            ],
+            'format' => 'json',
             'options' => [
                 'temperature' => 0,
                 'top_p' => 0.1,
                 'seed' => 42,
-                'num_predict' => 280,
+                'num_predict' => 800,
             ],
         ];
 
@@ -279,11 +251,24 @@ class OllamaService
             );
         }
 
+        Log::debug('[OllamaService] Full vision API response keys', [
+            'model' => $model,
+            'done' => $response->json('done'),
+            'response_length' => strlen((string) $response->json('response', '')),
+            'total_duration' => $response->json('total_duration'),
+            'eval_count' => $response->json('eval_count'),
+        ]);
+
         return (string) $response->json('response', '');
     }
 
     private function decodeModelJson(string $raw): array
     {
+        Log::debug('[OllamaService] Raw model response', [
+            'length' => strlen($raw),
+            'preview' => mb_substr($raw, 0, 500),
+        ]);
+
         $candidates = $this->buildJsonCandidates($raw);
 
         foreach ($candidates as $candidate) {
@@ -292,6 +277,11 @@ class OllamaService
                 return $decoded;
             }
         }
+
+        Log::error('[OllamaService] Failed to decode JSON from Ollama', [
+            'raw_full' => mb_substr($raw, 0, 2000),
+            'candidates_count' => count($candidates),
+        ]);
 
         throw new RuntimeException('Invalid JSON returned by Ollama model.');
     }
@@ -412,6 +402,7 @@ Tugas:
    - isbn: ISBN jika terlihat jelas, jika tidak null
    - title: judul jika terlihat, jika tidak null
    - author: penulis jika terlihat, jika tidak null
+   - publisher: penerbit jika terlihat, jika tidak null
    - category: kategori/genre buku (contoh: Teknologi, Sejarah, Novel, Fiksi, Bisnis), jika tidak yakin null
    - cover_box: koordinat area cover buku pada gambar dalam format normalisasi 0..1:
      {"x": number, "y": number, "w": number, "h": number}
@@ -420,6 +411,8 @@ Tugas:
    - isbn: ISBN terbaik dari semua gambar (prioritas paling jelas), jika tidak ada null
    - title: judul terbaik dari semua gambar, jika tidak ada null
    - author: penulis terbaik dari semua gambar, jika tidak ada null
+   - publisher: penerbit terbaik dari semua gambar, jika tidak ada null
+   - language: bahasa buku jika terlihat jelas (contoh: Indonesia, English), jika tidak yakin null
    - category: kategori/genre terbaik dari semua gambar, jika tidak ada null
    - description: ringkasan singkat buku dalam Bahasa Indonesia berdasarkan teks yang benar-benar terlihat pada gambar (cover belakang/sinopsis). Jika tidak terlihat jelas, null.
    - front_image_index: index gambar cover depan jika ada, jika tidak null
@@ -427,6 +420,7 @@ Tugas:
 Aturan ketat:
 - Jangan mengarang data.
 - Jangan menebak isi buku dari pengetahuan umum/model memory. Hanya pakai teks yang terlihat pada gambar.
+- Abaikan teks testimoni, kutipan pujian, badge promo, dan ornamen non-metadata.
 - Jika tidak yakin, isi null.
 - Jangan menambah field selain schema.
 - Output HARUS JSON valid murni, tanpa teks lain.
@@ -530,7 +524,7 @@ PROMPT;
         }
 
         try {
-            $maxSide = 1400;
+            $maxSide = 1024;
             $width = imagesx($image);
             $height = imagesy($image);
 
@@ -575,11 +569,15 @@ PROMPT;
     private function buildTranslatePrompt(string $text): string
     {
         return <<<PROMPT
-Terjemahkan teks berikut ke Bahasa Indonesia yang natural.
+Anda adalah penerjemah profesional EN->ID.
+
+Terjemahkan teks berikut ke Bahasa Indonesia yang natural, utuh, dan mudah dipahami.
 Aturan:
 - Jangan menambah informasi baru.
 - Pertahankan makna asli.
-- Output hanya teks terjemahan, tanpa komentar tambahan.
+- Jika teks sumber berbahasa Inggris, hasil wajib berbahasa Indonesia.
+- Jangan mengembalikan teks asli bahasa Inggris.
+- Output HANYA teks terjemahan final, tanpa komentar, catatan, atau penjelasan tambahan.
 
 Teks:
 {$text}

@@ -16,6 +16,7 @@
             $category = trim((string) ($book['category_name'] ?? ''));
             return $category !== '' ? $category : 'Tanpa Kategori';
         })->sortKeys();
+        $aiDraftFinished = (bool) ($ai_scan_draft['summary']['is_finished'] ?? false);
         $recommendedScanMode = $ai_runtime['recommended_scan_mode'] ?? 'simple';
         $ollamaDiagnostic = $ai_diagnostics['ollama'] ?? null;
         $visionOnline = ($ollamaDiagnostic['status'] ?? null) === 'ok';
@@ -121,7 +122,7 @@
         </div>
 
         <div data-ai-tab-panel="scan">
-            <form method="POST" action="{{ route('books.import.ai-batch-scan') }}" enctype="multipart/form-data" class="space-y-5" id="batch-scan-form">
+            <form method="POST" action="{{ route('books.import.ai-batch-scan') }}" enctype="multipart/form-data" class="space-y-5" id="batch-scan-form" data-status-url-template="{{ route('books.import.ai-batch-status', ['token' => '__TOKEN__']) }}" data-cancel-url-template="{{ route('books.import.ai-batch-cancel', ['token' => '__TOKEN__']) }}">
                 @csrf
                 <div class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
                     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -148,10 +149,14 @@
                                     <p id="batch-scan-status-subtitle" class="text-xs text-primary-700">0 buku siap diproses.</p>
                                 </div>
                             </div>
-                            <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-primary-700">
-                                <span id="batch-scan-live-count">0</span>/<span id="batch-scan-live-total">0</span> buku
+                            <div class="flex items-center gap-2">
+                                <button type="button" id="batch-cancel-btn" class="hidden rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50">Batalkan Scan</button>
+                                <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-primary-700">
+                                    <span id="batch-scan-live-count">0</span>/<span id="batch-scan-live-total">0</span> buku
+                                </div>
                             </div>
                         </div>
+                        <p id="batch-scan-status-note" class="mt-3 text-xs text-primary-700">Batch akan diproses di background satu per satu agar server Ollama tetap aman.</p>
                     </div>
 
                     <div id="ai-batch-list" class="grid gap-4">
@@ -532,7 +537,7 @@
             });
 
             setTopTab(@json($hasManualErrors ? 'manual' : 'ai'));
-            setAiTab(@json($groupedDraftBooks->isNotEmpty() ? 'review' : 'scan'));
+            setAiTab(@json($groupedDraftBooks->isNotEmpty() && $aiDraftFinished ? 'review' : 'scan'));
 
             const batchList = document.getElementById('ai-batch-list');
             const batchTemplate = document.getElementById('ai-batch-item-template');
@@ -540,12 +545,17 @@
             const batchScanStatus = document.getElementById('batch-scan-status');
             const batchScanStatusTitle = document.getElementById('batch-scan-status-title');
             const batchScanStatusSubtitle = document.getElementById('batch-scan-status-subtitle');
+            const batchScanStatusNote = document.getElementById('batch-scan-status-note');
             const batchScanLiveCount = document.getElementById('batch-scan-live-count');
             const batchScanLiveTotal = document.getElementById('batch-scan-live-total');
+            const batchCancelButton = document.getElementById('batch-cancel-btn');
             const batchReadyIndicator = document.getElementById('batch-ready-indicator');
             const batchScanSubmit = document.getElementById('batch-scan-submit');
             const batchScanSubmitSpinner = document.getElementById('batch-scan-submit-spinner');
             const batchScanSubmitLabel = document.getElementById('batch-scan-submit-label');
+            const existingBatchDraftToken = @json($ai_scan_draft_token);
+            let activeBatchDraftToken = existingBatchDraftToken;
+            let batchPollingTimer = null;
             const updateSlotPreview = (card) => {
                 if (!card) return;
                 const frontInput = card.querySelector('[data-field="front_image"]');
@@ -595,6 +605,149 @@
                 }
                 if (batchScanLiveCount) batchScanLiveCount.textContent = String(ready);
                 if (batchScanLiveTotal) batchScanLiveTotal.textContent = String(cards.length);
+            };
+
+            const renderBatchCardProgress = (card, book) => {
+                if (!card || !book) return;
+                const scanStatus = card.querySelector('[data-scan-status]');
+                if (!scanStatus) return;
+
+                const status = book.scan_status || 'pending';
+                if (status === 'pending') {
+                    scanStatus.textContent = 'Menunggu antrian';
+                    scanStatus.className = 'rounded-full bg-gray-100 px-2.5 py-1 text-gray-600';
+                    return;
+                }
+
+                if (status === 'processing') {
+                    scanStatus.textContent = 'Sedang diproses';
+                    scanStatus.className = 'rounded-full bg-sky-100 px-2.5 py-1 text-sky-700';
+                    return;
+                }
+
+                if (status === 'success') {
+                    scanStatus.textContent = 'Sudah discan';
+                    scanStatus.className = 'rounded-full bg-primary-100 px-2.5 py-1 text-primary-700';
+                    return;
+                }
+
+                if (status === 'failed') {
+                    scanStatus.textContent = 'Gagal, perlu review';
+                    scanStatus.className = 'rounded-full bg-red-100 px-2.5 py-1 text-red-700';
+                    return;
+                }
+
+                if (status === 'cancelled') {
+                    scanStatus.textContent = 'Dibatalkan';
+                    scanStatus.className = 'rounded-full bg-amber-100 px-2.5 py-1 text-amber-700';
+                }
+            };
+
+            const setBatchSubmitLoading = (loading) => {
+                if (batchScanSubmit) {
+                    batchScanSubmit.disabled = loading;
+                    batchScanSubmit.classList.toggle('is-loading', loading);
+                }
+                if (batchScanSubmitSpinner) {
+                    batchScanSubmitSpinner.classList.toggle('hidden', !loading);
+                }
+                if (batchScanSubmitLabel) {
+                    batchScanSubmitLabel.textContent = loading ? 'Memasukkan ke antrian...' : 'Jalankan Batch Scan AI';
+                }
+            };
+
+            const getBatchStatusUrl = (token) => {
+                const template = batchForm?.dataset.statusUrlTemplate || '';
+                return template.replace('__TOKEN__', token);
+            };
+
+            const getBatchCancelUrl = (token) => {
+                const template = batchForm?.dataset.cancelUrlTemplate || '';
+                return template.replace('__TOKEN__', token);
+            };
+
+            const stopBatchPolling = () => {
+                if (batchPollingTimer) {
+                    clearTimeout(batchPollingTimer);
+                    batchPollingTimer = null;
+                }
+            };
+
+            const renderBatchStatusSummary = (draft) => {
+                const summary = draft?.summary;
+                if (!summary || !batchScanStatus) return;
+
+                batchScanStatus.classList.remove('hidden');
+                if (batchCancelButton) {
+                    const isCancellable = !(summary.is_finished || draft?.status === 'cancelled');
+                    batchCancelButton.classList.toggle('hidden', !isCancellable);
+                    batchCancelButton.disabled = !isCancellable;
+                }
+                if (batchScanStatusTitle) {
+                    batchScanStatusTitle.textContent = draft?.status === 'cancelled'
+                        ? 'Batch scan dibatalkan.'
+                        : summary.is_finished
+                        ? 'Batch scan selesai.'
+                        : (summary.is_stale_queue
+                            ? 'Antrian scan belum diproses worker.'
+                            : 'Batch scan sedang berjalan di background...');
+                }
+                if (batchScanStatusSubtitle) {
+                    batchScanStatusSubtitle.textContent = draft?.status === 'cancelled'
+                        ? `${summary.cancelled || 0} dibatalkan, ${summary.success} berhasil, ${summary.failed} gagal.`
+                        : summary.is_stale_queue
+                        ? `${summary.success} berhasil, ${summary.failed} gagal, ${summary.pending + summary.processing} masih menunggu.`
+                        : `${summary.success} berhasil, ${summary.failed} gagal, ${summary.pending + summary.processing} masih berjalan.`;
+                }
+                if (batchScanStatusNote) {
+                    batchScanStatusNote.textContent = draft?.status === 'cancelled'
+                        ? 'Antrian scan sudah dibatalkan. Buku yang belum diproses tidak akan dilanjutkan.'
+                        : summary.is_finished
+                        ? 'Halaman akan disegarkan agar hasil review sinkron.'
+                        : (summary.is_stale_queue
+                            ? `Job sudah masuk antrian lebih dari ${summary.queue_wait_seconds || 0} detik. Jalankan worker queue: php artisan queue:work database --queue=ai-scan --tries=1 --sleep=1`
+                            : 'Worker memproses satu per satu agar GPU/VRAM Ollama tetap aman.');
+                }
+                if (batchScanLiveCount) batchScanLiveCount.textContent = String(summary.completed);
+                if (batchScanLiveTotal) batchScanLiveTotal.textContent = String(summary.total);
+            };
+
+            const pollBatchStatus = async (token) => {
+                if (!token) return;
+
+                try {
+                    const response = await fetch(getBatchStatusUrl(token), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    if (!response.ok) {
+                        throw new Error('Gagal mengambil progress batch scan.');
+                    }
+
+                    const draft = await response.json();
+                    renderBatchStatusSummary(draft);
+
+                    const cards = [...batchList.querySelectorAll('[data-ai-book-item]')];
+                    (draft.books || []).forEach((book, index) => renderBatchCardProgress(cards[index], book));
+
+                    if (draft.status === 'cancelled') {
+                        setBatchSubmitLoading(false);
+                        stopBatchPolling();
+                        window.setTimeout(() => window.location.reload(), 600);
+                        return;
+                    }
+
+                    if (draft.summary?.is_finished) {
+                        setBatchSubmitLoading(false);
+                        stopBatchPolling();
+                        window.setTimeout(() => window.location.reload(), 1200);
+                        return;
+                    }
+                } catch (error) {
+                    if (batchScanStatusTitle) batchScanStatusTitle.textContent = 'Progress batch belum bisa dibaca.';
+                    if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = error.message || 'Periksa koneksi ke server.';
+                }
+
+                batchPollingTimer = window.setTimeout(() => pollBatchStatus(token), 2000);
             };
 
             const reindexBatchCards = () => {
@@ -651,45 +804,94 @@
             });
             reindexBatchCards();
 
-            batchForm?.addEventListener('submit', () => {
+            batchForm?.addEventListener('submit', async (event) => {
+                event.preventDefault();
                 const cards = [...batchList.querySelectorAll('[data-ai-book-item]')];
                 const total = cards.length;
                 const ready = cards.filter((card) => card.querySelector('[data-field="front_image"]')?.files?.length).length;
 
-                if (batchScanStatus) batchScanStatus.classList.remove('hidden');
-                if (batchScanStatusTitle) batchScanStatusTitle.textContent = 'Batch scan sedang dijalankan...';
-                if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = `${ready} dari ${total} buku masuk antrian scan.`;
-                if (batchScanLiveCount) batchScanLiveCount.textContent = '0';
-                if (batchScanLiveTotal) batchScanLiveTotal.textContent = String(ready);
-                if (batchScanSubmit) {
-                    batchScanSubmit.disabled = true;
-                    batchScanSubmit.classList.add('is-loading');
-                }
-                if (batchScanSubmitSpinner) {
-                    batchScanSubmitSpinner.classList.remove('hidden');
-                }
-                if (batchScanSubmitLabel) {
-                    batchScanSubmitLabel.textContent = 'Scanning...';
+                if (ready === 0) {
+                    if (batchScanStatus) batchScanStatus.classList.remove('hidden');
+                    if (batchScanStatusTitle) batchScanStatusTitle.textContent = 'Batch scan belum bisa dijalankan.';
+                    if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = 'Pilih minimal 1 front cover terlebih dahulu.';
+                    return;
                 }
 
-                let simulated = 0;
-                const timer = setInterval(() => {
-                    simulated = Math.min(simulated + 1, ready);
-                    if (batchScanLiveCount) batchScanLiveCount.textContent = String(simulated);
-                    if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = `${simulated} buku selesai dibaca, ${Math.max(ready - simulated, 0)} masih diproses...`;
-                    cards.forEach((card, index) => {
-                        if (index < simulated) {
-                            const scanStatus = card.querySelector('[data-scan-status]');
-                            if (scanStatus) {
-                                scanStatus.textContent = 'Sudah discan';
-                                scanStatus.className = 'rounded-full bg-primary-100 px-2.5 py-1 text-primary-700';
-                            }
-                        }
-                    });
-                    if (simulated >= ready) {
-                        clearInterval(timer);
+                if (batchScanStatus) batchScanStatus.classList.remove('hidden');
+                if (batchScanStatusTitle) batchScanStatusTitle.textContent = 'Mengirim batch ke antrian scan...';
+                if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = `${ready} dari ${total} buku sedang dipersiapkan.`;
+                if (batchScanStatusNote) batchScanStatusNote.textContent = 'Setelah job masuk queue, progress akan dipantau otomatis.';
+                if (batchScanLiveCount) batchScanLiveCount.textContent = '0';
+                if (batchScanLiveTotal) batchScanLiveTotal.textContent = String(ready);
+                setBatchSubmitLoading(true);
+                stopBatchPolling();
+
+                cards.forEach((card) => {
+                    if (card.querySelector('[data-field="front_image"]')?.files?.length) {
+                        renderBatchCardProgress(card, { scan_status: 'pending' });
                     }
-                }, 500);
+                });
+
+                try {
+                    const formData = new FormData(batchForm);
+                    const response = await fetch(batchForm.action, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json',
+                        },
+                        body: formData,
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Batch scan gagal dimasukkan ke antrian.');
+                    }
+
+                    activeBatchDraftToken = data.draft_token || null;
+                    if (batchScanStatusTitle) batchScanStatusTitle.textContent = 'Batch scan sudah masuk antrian.';
+                    if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = `${ready} buku sedang menunggu worker.`;
+                    pollBatchStatus(activeBatchDraftToken);
+                } catch (error) {
+                    setBatchSubmitLoading(false);
+                    if (batchScanStatusTitle) batchScanStatusTitle.textContent = 'Batch scan gagal dijalankan.';
+                    if (batchScanStatusSubtitle) batchScanStatusSubtitle.textContent = error.message || 'Periksa koneksi dan runtime.';
+                }
+            });
+
+            if (existingBatchDraftToken) {
+                pollBatchStatus(existingBatchDraftToken);
+            }
+
+            batchCancelButton?.addEventListener('click', async () => {
+                if (!activeBatchDraftToken) return;
+                if (!window.confirm('Batalkan batch scan ini? Buku yang belum selesai diproses tidak akan dilanjutkan.')) {
+                    return;
+                }
+
+                batchCancelButton.disabled = true;
+
+                try {
+                    const response = await fetch(getBatchCancelUrl(activeBatchDraftToken), {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            Accept: 'application/json',
+                        },
+                    });
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.message || 'Gagal membatalkan batch scan.');
+                    }
+
+                    stopBatchPolling();
+                    window.location.reload();
+                } catch (error) {
+                    batchCancelButton.disabled = false;
+                    if (batchScanStatusNote) {
+                        batchScanStatusNote.textContent = error.message || 'Gagal membatalkan batch scan.';
+                    }
+                }
             });
 
             const reviewSubmitButton = document.getElementById('review-submit-button');

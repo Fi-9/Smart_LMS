@@ -27,6 +27,55 @@
   - Operasional penyusunan rack jadi sesuai kebutuhan lapangan: 1 posisi dapat menampung banyak buku.
   - UI lebih informatif dan tidak menyesatkan seolah slot hanya bisa 1 buku.
 
+### AI Metadata Fallback Order Fix - Google First, Fill Missing Only
+- Memperbaiki urutan fallback metadata AI scan agar lebih sesuai alur operasional:
+  - prioritas provider tetap dimulai dari Google Books
+  - jika source awal jatuh ke OpenLibrary dan metadata inti masih ada yang kosong, sistem mencoba retry ke Google (berbasis title kandidat yang sudah dibersihkan)
+  - websearch tetap dipakai sebagai fallback deskripsi jika deskripsi masih kosong
+- Menegaskan kebijakan merge metadata:
+  - field yang sudah terisi tidak dioverride
+  - field kosong saja yang diisi dari provider/fallback
+- Memperluas merge missing field agar bisa melengkapi juga `title`, `author`, `isbn`, dan `cover_url` bila memang kosong.
+- File:
+  - `app/Services/AiBookScanPipelineService.php`
+  - `tests/Unit/AiBookScanPipelineServiceTest.php`
+  - `docs/change_log.md`
+- Dampak:
+  - Kasus yang sebelumnya mentok di source OpenLibrary dengan deskripsi kosong jadi punya kesempatan naik lagi ke Google.
+  - Autofill metadata jadi lebih aman karena tidak menimpa data yang sudah ada.
+
+### Async Batch Scan Architecture - Queue Worker + Polling Progress
+- Mengubah batch scan AI dari proses sinkron menjadi arsitektur asynchronous yang lebih cocok untuk Ollama lokal.
+- Implementasi inti:
+  - job baru `ProcessAiBatchScanBook` untuk memproses satu buku per job di queue `ai-scan`
+  - service baru `AiBatchScanDraftService` untuk menyimpan draft status batch di cache
+  - endpoint status baru untuk polling progress batch scan dari UI
+  - form batch scan sekarang submit via `fetch`, menerima `202 Accepted`, lalu memantau progress sampai selesai
+  - setelah semua job selesai, halaman otomatis refresh ke hasil review
+- Pengamanan resource:
+  - file upload batch disimpan sementara di local storage untuk diproses worker lalu dibersihkan
+  - `DB_QUEUE_RETRY_AFTER` dinaikkan untuk menghindari job vision panjang diproses ulang terlalu cepat
+- Penyesuaian prompt/vision:
+  - image prep untuk request vision diperkecil ke sisi maksimal `1024px`
+  - prompt vision diperjelas untuk gaya GLM: JSON ketat, abaikan testimoni/badge promo, serta ekstraksi publisher/bahasa jika terlihat
+- File:
+  - `app/Services/AiBatchScanDraftService.php`
+  - `app/Jobs/ProcessAiBatchScanBook.php`
+  - `app/Http/Controllers/Web/BulkImportPageController.php`
+  - `resources/views/books/import.blade.php`
+  - `routes/web.php`
+  - `config/queue.php`
+  - `app/Services/OllamaService.php`
+  - `app/Services/AiBookScanPipelineService.php`
+  - `tests/Feature/AiBatchImportFlowTest.php`
+  - `.env`
+  - `.env.example`
+  - `docs/change_log.md`
+- Dampak:
+  - Batch scan tidak lagi menahan request browser sampai semua buku selesai.
+  - Worker bisa dijalankan serial untuk menjaga GPU/VRAM Ollama tetap stabil.
+  - User mendapat progress yang lebih jelas selama proses scan berlangsung.
+
 ## 2026-04-06
 
 ### AI Scan Flow Realignment - Vision First, Provider Enrichment, Trusted Web Fallback
@@ -1118,3 +1167,154 @@
   - `php -l app/Services/OllamaService.php` => OK
   - `php -l app/Services/AiBookScanPipelineService.php` => OK
   - `php artisan optimize:clear` => dijalankan
+
+### Provider Priority Fix - Google First, Then OpenLibrary, Then Websearch
+- Memisahkan jalur lookup katalog menjadi `Google-only` dan `OpenLibrary-only` agar pipeline tidak terjebak pada hasil cache/provider campuran.
+- `AiBookScanPipelineService` sekarang memproses provider dengan urutan eksplisit:
+  1. Google Books lebih dulu
+  2. OpenLibrary hanya untuk mengisi field yang masih kosong
+  3. Trusted websearch untuk deskripsi bila masih belum tersedia
+- Prinsip `fill missing only` tetap dipertahankan, jadi field yang sudah ada dari AI cover/back cover/provider tidak ditimpa.
+- Retry Google setelah hasil awal OpenLibrary sekarang memakai lookup Google-only, jadi tidak muter balik ke source OpenLibrary dari cache campuran.
+- Unit test pipeline diperbarui untuk mengikuti prioritas provider baru.
+- File:
+  - `app/Services/IsbnLookupService.php`
+  - `app/Services/AiBookScanPipelineService.php`
+  - `tests/Unit/AiBookScanPipelineServiceTest.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l app/Services/IsbnLookupService.php` => OK
+  - `php -l app/Services/AiBookScanPipelineService.php` => OK
+  - `php artisan test tests/Unit/AiBookScanPipelineServiceTest.php tests/Feature/AiBatchImportFlowTest.php` => PASS
+
+### Settings Sync to .env - Tavily as Active Websearch Provider
+- Menambahkan `EnvFileService` untuk sinkronisasi pengaturan AI dari panel admin ke file `.env`.
+- Saat admin menyimpan menu Settings, nilai berikut sekarang ikut ditulis ke `.env`:
+  - `GOOGLE_BOOKS_API_KEY`
+  - `OLLAMA_BASE_URL`
+  - `OLLAMA_VISION_MODEL`
+  - `OLLAMA_TEXT_MODEL`
+  - `OLLAMA_WEB_MODEL`
+  - `OLLAMA_TIMEOUT`
+  - `OLLAMA_CONNECT_TIMEOUT`
+  - `WEBSEARCH_ENABLED`
+  - `TAVILY_API_KEY`
+  - `TAVILY_BASE_URL`
+  - `TAVILY_TIMEOUT`
+  - `WEBSEARCH_MAX_RESULTS`
+  - `WEBSEARCH_ALLOWED_DOMAINS`
+  - `AI_SCAN_DEFAULT_MODE`
+- Sekaligus membersihkan konfigurasi lama yang tidak lagi dipakai sebagai provider aktif:
+  - `SEARXNG_BASE_URL`
+  - `SEARXNG_TIMEOUT`
+  - `OPENMAIC_*`
+- File:
+  - `app/Services/EnvFileService.php`
+  - `app/Http/Controllers/Web/SettingsPageController.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l app/Services/EnvFileService.php` => OK
+  - `php -l app/Http/Controllers/Web/SettingsPageController.php` => OK
+
+### Queue Stall Detection - Batch Scan Tidak Lagi Terlihat Muter Terus
+- Menambahkan deteksi `stale queue` pada draft batch scan jika job tetap `pending` terlalu lama dan belum ada worker yang memproses.
+- Status batch sekarang bisa berubah ke `stale_queue` jika antrian diam lebih dari ambang waktu aman.
+- UI halaman import diperbarui agar menampilkan pesan yang lebih jujur:
+  - bukan lagi sekadar "masih berjalan"
+  - tetapi memberi tahu bahwa worker queue belum memproses job
+  - sekaligus menampilkan command worker yang perlu dijalankan
+- File:
+  - `app/Services/AiBatchScanDraftService.php`
+  - `resources/views/books/import.blade.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l app/Services/AiBatchScanDraftService.php` => OK
+  - `php -l resources/views/books/import.blade.php` => OK
+
+### Queue Worker Diagnostics - Status Worker Kini Terlihat di Settings dan Dashboard
+- Menambahkan diagnostic baru untuk `ai-scan queue worker` pada `AiInfrastructureService`.
+- Aplikasi sekarang memeriksa jumlah job `ai-scan` yang masih menunggu dan lama antrean job tertua.
+- Jika ada job menunggu terlalu lama, status berubah menjadi `warning` dan aplikasi menampilkan command worker yang harus dijalankan.
+- Menambahkan kartu status `AI Queue` pada halaman Settings.
+- Menambahkan alert queue worker pada Dashboard agar operator cepat tahu kalau batch scan macet karena worker belum aktif.
+- File:
+  - `app/Services/AiInfrastructureService.php`
+  - `app/Http/Controllers/Web/DashboardPageController.php`
+  - `resources/views/settings/index.blade.php`
+  - `resources/views/dashboard/index.blade.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l app/Services/AiInfrastructureService.php` => OK
+  - `php -l app/Http/Controllers/Web/DashboardPageController.php` => OK
+  - `php -l resources/views/settings/index.blade.php` => OK
+  - `php -l resources/views/dashboard/index.blade.php` => OK
+
+### Worker Auto-Run Templates - Supervisor dan systemd untuk AI Queue
+- Menambahkan template deploy agar worker `ai-scan` bisa hidup otomatis tanpa harus menjalankan `queue:work` manual terus-menerus.
+- Menambahkan template Supervisor:
+  - `deploy/supervisor/smart-lms-ai-scan.conf`
+- Menambahkan template systemd:
+  - `deploy/systemd/smart-lms-ai-scan.service`
+- Menambahkan panduan setup:
+  - `docs/queue_worker_setup.md`
+- Halaman Settings sekarang juga menampilkan referensi cepat untuk:
+  - lokasi file template
+  - command worker yang dipakai
+  - rujukan ke panduan setup worker
+- File:
+  - `deploy/supervisor/smart-lms-ai-scan.conf`
+  - `deploy/systemd/smart-lms-ai-scan.service`
+  - `docs/queue_worker_setup.md`
+  - `resources/views/settings/index.blade.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l resources/views/settings/index.blade.php` => OK
+
+### Batch Scan Cancel Action - Tombol Batalkan Antrian Scan
+- Menambahkan aksi `cancel batch scan` untuk antrian AI scan yang masih berjalan / masih menunggu worker.
+- Menambahkan endpoint backend untuk membatalkan draft batch scan:
+  - draft ditandai `cancelled`
+  - session draft dihapus
+  - buku yang belum selesai diproses ditandai `cancelled`
+- Menambahkan guard pada job queue agar worker yang mengambil draft yang sudah dibatalkan langsung berhenti dan membersihkan file temporary.
+- Menambahkan tombol `Batalkan Scan` pada status batch scan di halaman import.
+- UI polling sekarang mengenali status `cancelled` dan mereset halaman setelah pembatalan berhasil.
+- Menambahkan coverage test untuk memastikan batch scan dapat dibatalkan.
+- File:
+  - `app/Services/AiBatchScanDraftService.php`
+  - `app/Jobs/ProcessAiBatchScanBook.php`
+  - `app/Http/Controllers/Web/BulkImportPageController.php`
+  - `routes/web.php`
+  - `resources/views/books/import.blade.php`
+  - `tests/Feature/AiBatchImportFlowTest.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l app/Http/Controllers/Web/BulkImportPageController.php` => OK
+  - `php -l app/Jobs/ProcessAiBatchScanBook.php` => OK
+  - `php -l app/Services/AiBatchScanDraftService.php` => OK
+  - `php -l resources/views/books/import.blade.php` => OK
+  - `php -l routes/web.php` => OK
+  - `php artisan test tests/Feature/AiBatchImportFlowTest.php` => PASS
+
+### English Provider Localization - Deskripsi dan Kategori Provider Kini Lebih Indonesia
+- Memperkuat prompt translasi Ollama agar hasil provider berbahasa Inggris benar-benar diterjemahkan ke Bahasa Indonesia, bukan dikembalikan mentah.
+- Menambahkan normalisasi hasil translasi untuk membuang prefix seperti `Terjemahan:` jika model mengeluarkannya.
+- Menambahkan guard tambahan pada pipeline:
+  - jika hasil translasi kosong
+  - atau hasil translasi masih identik dengan teks sumber
+  - atau hasil translasi masih tampak berbahasa Inggris
+  maka dianggap gagal dan dicatat melalui log pipeline.
+- Menambahkan lokalisasi kategori provider umum berbahasa Inggris, misalnya:
+  - `Self-Help` => `Pengembangan Diri`
+  - `Business & Economics` => `Bisnis & Ekonomi`
+  - `History` => `Sejarah`
+- Menambahkan unit test untuk memastikan deskripsi Google Books berbahasa Inggris diterjemahkan ke Indonesia dan kategori ikut dilokalkan.
+- File:
+  - `app/Services/OllamaService.php`
+  - `app/Services/AiBookScanPipelineService.php`
+  - `tests/Unit/AiBookScanPipelineServiceTest.php`
+  - `docs/change_log.md`
+- Verifikasi:
+  - `php -l app/Services/OllamaService.php` => OK
+  - `php -l app/Services/AiBookScanPipelineService.php` => OK
+  - `php artisan test tests/Unit/AiBookScanPipelineServiceTest.php` => PASS

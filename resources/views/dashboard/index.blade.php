@@ -33,6 +33,14 @@
         </div>
     </div>
 
+    @if(($ai_diagnostics['queue_worker']['status'] ?? null) === 'warning')
+        <div class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 shadow-sm">
+            <p class="text-sm font-semibold text-amber-800">AI batch queue sedang menunggu worker.</p>
+            <p class="mt-1 text-sm text-amber-700">{{ $ai_diagnostics['queue_worker']['detail'] ?? '' }}</p>
+            <code class="mt-3 block overflow-x-auto rounded-xl bg-white px-4 py-3 text-xs text-gray-800">{{ $ai_diagnostics['queue_worker']['command'] ?? 'php artisan queue:work database --queue=ai-scan --tries=1 --sleep=1' }}</code>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <x-card>
             <h2 class="font-semibold text-gray-800">Books per Rack</h2>

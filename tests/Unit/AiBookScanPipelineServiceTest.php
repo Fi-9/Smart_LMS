@@ -46,7 +46,7 @@ class AiBookScanPipelineServiceTest extends TestCase
                 ],
             ]);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
             ->once()
             ->with('Laskar Pelangi', 'Andrea Hirata')
             ->andReturn([
@@ -82,7 +82,7 @@ class AiBookScanPipelineServiceTest extends TestCase
         ], 'full');
 
         $this->assertSame('Sinopsis dari back cover.', $result['description']);
-        $this->assertSame('Novel Indonesia', $result['category']);
+        $this->assertSame('Novel', $result['category']);
         $this->assertSame('9789791227204', $result['isbn']);
         $this->assertSame('google', $result['source']);
         $this->assertSame('Back Cover', $result['field_sources']['description']);
@@ -115,8 +115,8 @@ class AiBookScanPipelineServiceTest extends TestCase
                 ],
             ]);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
-            ->once()
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
+            ->twice()
             ->with('Bumi', 'Tere Liye')
             ->andReturn([
                 'title' => 'Bumi',
@@ -193,8 +193,8 @@ class AiBookScanPipelineServiceTest extends TestCase
                 ],
             ]);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
-            ->once()
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
+            ->twice()
             ->with('Keep Going', 'Austin Kleon')
             ->andReturn([
                 'title' => 'Keep Going',
@@ -273,27 +273,27 @@ class AiBookScanPipelineServiceTest extends TestCase
                 ],
             ]);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
             ->once()
             ->with('The Endmatic Enduring Vision: A Enduring Vision: A History of the American People', 'Adimitra Nursalim')
             ->andReturn(null);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
             ->once()
             ->with('The Endmatic Enduring Vision A Enduring Vision A History of the American People', 'Adimitra Nursalim')
             ->andReturn(null);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
             ->once()
             ->with('The Endmatic Enduring Vision', 'Adimitra Nursalim')
             ->andReturn(null);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
             ->once()
             ->with('A Enduring Vision', 'Adimitra Nursalim')
             ->andReturn(null);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
             ->once()
             ->with('A History of the American People', 'Adimitra Nursalim')
             ->andReturn([
@@ -357,8 +357,8 @@ class AiBookScanPipelineServiceTest extends TestCase
                 ],
             ]);
 
-        $isbnLookup->shouldReceive('searchByTitleAuthor')
-            ->once()
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
+            ->times(3)
             ->with('KEEP GOING', 'AUSTIN KLEON')
             ->andReturn([
                 'title' => 'Keep Going',
@@ -372,7 +372,6 @@ class AiBookScanPipelineServiceTest extends TestCase
                 'source' => 'openlibrary',
                 'source_url' => 'https://openlibrary.org/books/OL1',
             ]);
-
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
         $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')
             ->once()
@@ -392,7 +391,7 @@ class AiBookScanPipelineServiceTest extends TestCase
 
         $webDescription->shouldReceive('resolveForDomains')
             ->once()
-            ->with('Keep Going', 'Austin Kleon', ['gramedia.com', 'gramedia.digital'])
+            ->with('KEEP GOING', 'AUSTIN KLEON', ['gramedia.com', 'gramedia.digital'])
             ->andReturn([
                 'description' => 'Deskripsi resmi web untuk Keep Going.',
                 'source_url' => 'https://www.gramedia.com/products/keep-going',
@@ -415,9 +414,76 @@ class AiBookScanPipelineServiceTest extends TestCase
             UploadedFile::fake()->image('front.jpg'),
         ], 'full');
 
-        $this->assertSame('Keep Going', $result['title']);
-        $this->assertSame('Austin Kleon', $result['author']);
+        $this->assertSame('KEEP GOING', $result['title']);
+        $this->assertSame('AUSTIN KLEON', $result['author']);
         $this->assertSame('Deskripsi resmi web untuk Keep Going.', $result['description']);
         $this->assertSame('websearch', $result['source']);
+    }
+
+    public function test_english_google_description_is_translated_to_indonesian_and_category_is_localized(): void
+    {
+        Storage::fake('public');
+
+        $ollama = Mockery::mock(OllamaService::class);
+        $isbnLookup = Mockery::mock(IsbnLookupService::class);
+        $webDescription = Mockery::mock(WebBookDescriptionService::class);
+        $coverService = Mockery::mock(CoverImageService::class);
+
+        $ollama->shouldReceive('extractBookSignals')
+            ->once()
+            ->andReturn([
+                'images' => [
+                    ['index' => 0, 'view' => 'front', 'cover_box' => null],
+                ],
+                'best' => [
+                    'isbn' => null,
+                    'title' => 'Keep Going',
+                    'author' => 'Austin Kleon',
+                    'category' => null,
+                    'description' => null,
+                    'front_image_index' => 0,
+                ],
+            ]);
+
+        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
+            ->once()
+            ->with('Keep Going', 'Austin Kleon')
+            ->andReturn([
+                'title' => 'Keep Going',
+                'author' => 'Austin Kleon',
+                'category' => 'Self-Help',
+                'description' => 'Keep Working. Keep Playing. Keep Creating.',
+                'publisher' => 'Workman',
+                'published_year' => '2019',
+                'isbn' => '9781523506640',
+                'cover_url' => null,
+                'source' => 'google',
+                'source_url' => 'https://books.google.com/keep-going',
+            ]);
+
+        $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
+        $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')->never();
+        $webDescription->shouldReceive('resolveForDomains')->never();
+        $webDescription->shouldReceive('resolve')->never();
+        $ollama->shouldReceive('translateTextToIndonesian')
+            ->once()
+            ->with('Keep Working. Keep Playing. Keep Creating.')
+            ->andReturn('Terus Berkarya. Terus Bermain. Terus Mencipta.');
+        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/keep-going-front.jpg');
+
+        $service = new AiBookScanPipelineService(
+            $ollama,
+            $isbnLookup,
+            $webDescription,
+            $coverService
+        );
+
+        $result = $service->scan([
+            UploadedFile::fake()->image('front.jpg'),
+        ], 'full');
+
+        $this->assertSame('Terus Berkarya. Terus Bermain. Terus Mencipta.', $result['description']);
+        $this->assertSame('Pengembangan Diri', $result['category']);
     }
 }

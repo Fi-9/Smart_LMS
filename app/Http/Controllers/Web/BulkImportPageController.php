@@ -10,15 +10,16 @@ use App\Http\Requests\LookupIsbnRequest;
 use App\Http\Requests\ScanBookBatchRequest;
 use App\Http\Requests\ScanBookImagesRequest;
 use App\Http\Requests\StoreManualBookRequest;
+use App\Jobs\ProcessAiBatchScanBook;
 use App\Models\Category;
 use App\Models\Rack;
+use App\Services\AiBatchScanDraftService;
 use App\Services\AiScanObservabilityService;
 use App\Services\AiBookScanPipelineService;
 use App\Services\AiInfrastructureService;
 use App\Services\BookService;
 use App\Services\BulkImportService;
 use App\Services\IsbnLookupService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -28,16 +29,14 @@ use Throwable;
 
 class BulkImportPageController extends Controller
 {
-    private const AI_SCAN_DRAFT_CACHE_PREFIX = 'bulk-import-ai-draft:';
-    private const AI_SCAN_DRAFT_TTL_MINUTES = 180;
-
     public function __construct(
         private readonly BulkImportService $bulkImportService,
         private readonly BookService $bookService,
         private readonly IsbnLookupService $isbnLookupService,
         private readonly AiBookScanPipelineService $aiBookScanPipelineService,
         private readonly AiScanObservabilityService $observabilityService,
-        private readonly AiInfrastructureService $aiInfrastructureService
+        private readonly AiInfrastructureService $aiInfrastructureService,
+        private readonly AiBatchScanDraftService $aiBatchScanDraftService
     ) {
     }
 
@@ -182,6 +181,12 @@ class BulkImportPageController extends Controller
     {
         $runtimeIssue = $this->aiInfrastructureService->ensureVisionRuntimeAvailable();
         if ($runtimeIssue) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => $runtimeIssue,
+                ], Response::HTTP_BAD_GATEWAY);
+            }
+
             return redirect()
                 ->route('books.import')
                 ->withInput()
@@ -191,12 +196,9 @@ class BulkImportPageController extends Controller
                 ]);
         }
 
-        @set_time_limit(900);
-        @ini_set('max_execution_time', '900');
-
         $mode = (string) $request->validated('mode', 'full');
         $batch = $request->validated('books');
-        $results = [];
+        $draftBooks = [];
 
         foreach ($batch as $index => $bookPayload) {
             $images = array_values(array_filter([
@@ -204,91 +206,115 @@ class BulkImportPageController extends Controller
                 $request->file("books.{$index}.back_image"),
             ]));
 
-            $start = microtime(true);
-            $imageCount = count($images);
+            $scanId = (string) Str::uuid();
+            $storedImagePaths = [];
 
-            try {
-                $result = $this->aiBookScanPipelineService->scan($images, $mode);
-
-                $durationMs = (int) round((microtime(true) - $start) * 1000);
-                $this->observabilityService->recordSuccess(
-                    channel: 'web',
-                    mode: $mode,
-                    source: (string) ($result['source'] ?? 'ai'),
-                    durationMs: $durationMs,
-                    imageCount: $imageCount
-                );
-
-                $results[] = [
-                    'scan_id' => (string) Str::uuid(),
-                    'title' => $result['title'] ?? null,
-                    'author' => $result['author'] ?? null,
-                    'category_name' => $result['category'] ?? 'Uncategorized',
-                    'description' => $result['description'] ?? null,
-                    'publisher' => $result['publisher'] ?? null,
-                    'published_year' => $result['published_year'] ?? null,
-                    'isbn' => $result['isbn'] ?? null,
-                    'cover_url' => $result['cover_url'] ?? null,
-                    'source' => $result['source'] ?? 'ai',
-                    'source_url' => $result['source_url'] ?? null,
-                    'field_sources' => $result['field_sources'] ?? [],
-                    'notes' => $bookPayload['notes'] ?? null,
-                    'scan_status' => 'success',
-                    'error' => null,
-                ];
-            } catch (\RuntimeException $e) {
-                $durationMs = (int) round((microtime(true) - $start) * 1000);
-                $this->observabilityService->recordFailure(
-                    channel: 'web',
-                    mode: $mode,
-                    durationMs: $durationMs,
-                    imageCount: $imageCount,
-                    error: $e->getMessage()
-                );
-
-                $results[] = [
-                    'scan_id' => (string) Str::uuid(),
-                    'title' => 'Buku #' . ($index + 1),
-                    'author' => null,
-                    'category_name' => 'Perlu Review',
-                    'description' => null,
-                    'publisher' => null,
-                    'published_year' => null,
-                    'isbn' => null,
-                    'cover_url' => null,
-                    'source' => 'ai',
-                    'source_url' => null,
-                    'field_sources' => [],
-                    'notes' => $bookPayload['notes'] ?? null,
-                    'scan_status' => 'failed',
-                    'error' => $e->getMessage(),
-                ];
+            foreach ($images as $image) {
+                $storedImagePaths[] = $image->store('ai-batch-uploads', 'local');
             }
+
+            $draftBooks[] = [
+                'scan_id' => $scanId,
+                'title' => 'Buku #' . ($index + 1),
+                'author' => null,
+                'category_name' => 'Perlu Review',
+                'description' => null,
+                'publisher' => null,
+                'published_year' => null,
+                'isbn' => null,
+                'cover_url' => null,
+                'source' => 'queue',
+                'source_url' => null,
+                'field_sources' => [],
+                'notes' => $bookPayload['notes'] ?? null,
+                'scan_status' => 'pending',
+                'error' => null,
+                'temp_images' => $storedImagePaths,
+            ];
         }
 
-        $draftToken = (string) Str::uuid();
-        Cache::put(
-            $this->aiDraftCacheKey($draftToken),
-            [
-                'mode' => $mode,
-                'books' => $results,
-                'generated_at' => now()->toIso8601String(),
-            ],
-            now()->addMinutes(self::AI_SCAN_DRAFT_TTL_MINUTES)
-        );
+        $draftToken = $this->aiBatchScanDraftService->create($mode, $draftBooks);
+
+        foreach ($draftBooks as $draftBook) {
+            ProcessAiBatchScanBook::dispatch(
+                $draftToken,
+                (string) $draftBook['scan_id'],
+                $draftBook['temp_images'] ?? [],
+                $mode
+            );
+        }
 
         $request->session()->put('bulk_import_ai_scan_draft_token', $draftToken);
         $request->session()->forget('bulk_import_summary');
         $request->session()->forget('bulk_import_preview');
 
-        $successCount = collect($results)->where('scan_status', 'success')->count();
-        $failedCount = collect($results)->where('scan_status', 'failed')->count();
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'AI batch scan masuk ke antrian.',
+                'draft_token' => $draftToken,
+                'status_url' => route('books.import.ai-batch-status', ['token' => $draftToken]),
+                'summary' => [
+                    'total' => count($draftBooks),
+                    'pending' => count($draftBooks),
+                ],
+            ], Response::HTTP_ACCEPTED);
+        }
 
         return redirect()
             ->route('books.import')
             ->with('toast', [
-                'type' => $failedCount > 0 ? 'info' : 'success',
-                'message' => "AI batch scan selesai. Berhasil: {$successCount}, perlu review: {$failedCount}.",
+                'type' => 'info',
+                'message' => 'AI batch scan masuk ke antrian. Progress akan muncul otomatis.',
+            ]);
+    }
+
+    public function batchScanStatus(Request $request, string $token): JsonResponse
+    {
+        $draft = $this->resolveAiScanDraft($token);
+
+        if (! $draft) {
+            return response()->json([
+                'message' => 'Draft hasil scan tidak ditemukan atau sudah kedaluwarsa.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        return response()->json($draft);
+    }
+
+    public function cancelBatchScan(Request $request, string $token)
+    {
+        $draft = $this->resolveAiScanDraft($token);
+
+        if (! $draft) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Draft batch scan tidak ditemukan atau sudah kedaluwarsa.',
+                ], Response::HTTP_NOT_FOUND);
+            }
+
+            return redirect()
+                ->route('books.import')
+                ->with('toast', [
+                    'type' => 'error',
+                    'message' => 'Draft batch scan tidak ditemukan atau sudah kedaluwarsa.',
+                ]);
+        }
+
+        $cancelled = $this->aiBatchScanDraftService->cancel($token);
+        $request->session()->forget('bulk_import_ai_scan_draft_token');
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Batch scan berhasil dibatalkan.',
+                'draft' => $cancelled,
+            ]);
+        }
+
+        return redirect()
+            ->route('books.import')
+            ->with('toast', [
+                'type' => 'info',
+                'message' => 'Batch scan berhasil dibatalkan.',
             ]);
     }
 
@@ -343,7 +369,7 @@ class BulkImportPageController extends Controller
             }
         }
 
-        Cache::forget($this->aiDraftCacheKey($draftToken));
+        $this->aiBatchScanDraftService->forget($draftToken);
         $request->session()->forget('bulk_import_ai_scan_draft_token');
 
         return redirect()
@@ -365,14 +391,7 @@ class BulkImportPageController extends Controller
             return null;
         }
 
-        $draft = Cache::get($this->aiDraftCacheKey($token));
-
-        return is_array($draft) ? $draft : null;
-    }
-
-    private function aiDraftCacheKey(string $token): string
-    {
-        return self::AI_SCAN_DRAFT_CACHE_PREFIX . $token;
+        return $this->aiBatchScanDraftService->get($token);
     }
 
     private function nullableTrimmedString(mixed $value): ?string

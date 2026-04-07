@@ -31,6 +31,7 @@ class AiBookScanPipelineService
         $author = $this->clean($best['author'] ?? null);
         $category = $this->clean($best['category'] ?? null);
         $descriptionFromVision = $this->clean($best['description'] ?? null);
+        $publisherFromVision = $this->clean($best['publisher'] ?? null);
 
         $source = 'ai';
         $metadata = $this->seedMetadataFromVision(
@@ -38,49 +39,43 @@ class AiBookScanPipelineService
             $author,
             $category,
             $descriptionFromVision,
-            $isbn
+            $isbn,
+            $publisherFromVision
         );
-        $fieldSources = $this->seedFieldSources($title, $author, $category, $descriptionFromVision, $isbn);
+        $fieldSources = $this->seedFieldSources($title, $author, $category, $descriptionFromVision, $isbn, $publisherFromVision);
         $lookupTitleCandidates = $this->buildLookupTitleCandidates($title);
 
         if ($mode === 'full') {
-            $providerMetadata = null;
-            if ($isbn) {
-                $providerMetadata = $this->isbnLookupService->lookupByIsbn($isbn);
-                if ($providerMetadata && ! $this->isMetadataConsistentWithAiSignals($providerMetadata, $title, $author)) {
-                    $providerMetadata = null;
-                }
-            }
-
-            if (! $providerMetadata) {
-                foreach ($lookupTitleCandidates as $lookupTitle) {
-                    $providerMetadata = $this->isbnLookupService->searchByTitleAuthor($lookupTitle, $author);
-                    if ($providerMetadata && ! $this->isMetadataConsistentWithAiSignals($providerMetadata, $title, $author)) {
-                        $providerMetadata = null;
-                    }
-
-                    if ($providerMetadata) {
-                        break;
-                    }
-                }
-            }
+            $providerMetadata = $this->resolvePrimaryProviderMetadata($isbn, $lookupTitleCandidates, $title, $author);
 
             if ($providerMetadata) {
                 $metadata = $this->mergeMissingFields($metadata, $providerMetadata);
                 $fieldSources = $this->applyProviderFieldSources($fieldSources, $metadata, $providerMetadata);
-                if ($this->shouldPreferProviderTitle($title, $providerMetadata['title'] ?? null)) {
+                if (
+                    $this->clean($metadata['title'] ?? null) === null
+                    && $this->clean($providerMetadata['title'] ?? null) !== null
+                ) {
                     $metadata['title'] = $this->clean($providerMetadata['title'] ?? null);
                     $fieldSources['title'] = $this->normalizeFieldSourceLabel($providerMetadata['source'] ?? null) ?? 'Provider';
                 }
-                if ($this->shouldPreferProviderAuthor($author, $providerMetadata['author'] ?? null)) {
+                if (
+                    $this->clean($metadata['author'] ?? null) === null
+                    && $this->clean($providerMetadata['author'] ?? null) !== null
+                ) {
                     $metadata['author'] = $this->clean($providerMetadata['author'] ?? null);
                     $fieldSources['author'] = $this->normalizeFieldSourceLabel($providerMetadata['source'] ?? null) ?? 'Provider';
                 }
-                if ($this->clean($providerMetadata['category'] ?? null) !== null) {
+                if (
+                    $this->clean($metadata['category'] ?? null) === null
+                    && $this->clean($providerMetadata['category'] ?? null) !== null
+                ) {
                     $metadata['category'] = $providerMetadata['category'];
                     $fieldSources['category'] = $this->normalizeFieldSourceLabel($providerMetadata['source'] ?? null);
                 }
-                if ($this->clean($providerMetadata['isbn'] ?? null) !== null) {
+                if (
+                    $this->clean($metadata['isbn'] ?? null) === null
+                    && $this->clean($providerMetadata['isbn'] ?? null) !== null
+                ) {
                     $metadata['isbn'] = $providerMetadata['isbn'];
                     $fieldSources['isbn'] = $this->normalizeFieldSourceLabel($providerMetadata['source'] ?? null);
                 }
@@ -88,11 +83,24 @@ class AiBookScanPipelineService
             }
 
             if ($metadata) {
-                $enriched = $this->enrichMissingMetadata($metadata, $fieldSources, $isbn, $title, $author, $lookupTitleCandidates);
+                $enriched = $this->enrichMissingMetadataFromProviders($metadata, $fieldSources, $isbn, $title, $author, $lookupTitleCandidates);
                 $metadata = $enriched['metadata'];
                 $fieldSources = $enriched['field_sources'];
                 if (($this->clean($metadata['source'] ?? null) === null || ($metadata['source'] ?? null) === 'ai') && $this->clean($enriched['source'] ?? null) !== null) {
                     $metadata['source'] = $enriched['source'];
+                }
+            }
+
+            if ($this->isOpenLibrarySource($metadata) && $this->hasMissingCatalogFields($metadata)) {
+                $googleRetry = $this->retryGoogleAfterOpenLibrary(
+                    $lookupTitleCandidates,
+                    $this->preferredAuthorForSearch($this->clean($metadata['author'] ?? null), $author)
+                );
+
+                if ($googleRetry) {
+                    $metadata = $this->mergeMissingFields($metadata, $googleRetry);
+                    $fieldSources = $this->applyProviderFieldSources($fieldSources, $metadata, $googleRetry);
+                    $source = $this->clean($metadata['source'] ?? null) ?? $source;
                 }
             }
 
@@ -142,7 +150,9 @@ class AiBookScanPipelineService
 
         $titleFinal = $this->clean($metadata['title'] ?? null) ?? $title;
         $authorFinal = $this->clean($metadata['author'] ?? null) ?? $author;
-        $categoryFinal = $this->clean($metadata['category'] ?? null) ?? $category;
+        $categoryFinal = $this->localizeCategoryToIndonesian(
+            $this->clean($metadata['category'] ?? null) ?? $category
+        );
         $descriptionFinal = $this->localizeDescriptionToIndonesian(
             $this->clean($metadata['description'] ?? null)
         );
@@ -179,14 +189,15 @@ class AiBookScanPipelineService
         ?string $author,
         ?string $category,
         ?string $description,
-        ?string $isbn
+        ?string $isbn,
+        ?string $publisher
     ): array {
         return [
             'title' => $title,
             'author' => $author,
             'category' => $category,
             'description' => $description,
-            'publisher' => null,
+            'publisher' => $publisher,
             'published_year' => null,
             'isbn' => $isbn,
             'cover_url' => null,
@@ -200,7 +211,8 @@ class AiBookScanPipelineService
         ?string $author,
         ?string $category,
         ?string $description,
-        ?string $isbn
+        ?string $isbn,
+        ?string $publisher
     ): array {
         return array_filter([
             'title' => $title ? 'AI Cover' : null,
@@ -208,13 +220,15 @@ class AiBookScanPipelineService
             'category' => $category ? 'AI Cover' : null,
             'description' => $description ? 'Back Cover' : null,
             'isbn' => $isbn ? 'AI Cover' : null,
+            'publisher' => $publisher ? 'AI Cover' : null,
         ], fn (mixed $value): bool => is_string($value) && trim($value) !== '');
     }
 
-    private function enrichMissingMetadata(array $primary, array $fieldSources, ?string $isbn, ?string $title, ?string $author, array $lookupTitleCandidates): array
+    private function enrichMissingMetadataFromProviders(array $primary, array $fieldSources, ?string $isbn, ?string $title, ?string $author, array $lookupTitleCandidates): array
     {
         $needsEnrichment = $this->clean($primary['description'] ?? null) === null
             || $this->clean($primary['category'] ?? null) === null
+            || $this->clean($primary['author'] ?? null) === null
             || $this->clean($primary['publisher'] ?? null) === null
             || $this->clean($primary['published_year'] ?? null) === null;
 
@@ -226,30 +240,78 @@ class AiBookScanPipelineService
             ];
         }
 
-        $secondary = null;
-        if ($isbn) {
-            $secondary = $this->isbnLookupService->lookupOpenLibraryByIsbn($isbn);
+        $merged = $primary;
+        $source = $this->clean($primary['source'] ?? null);
+
+        $google = $this->resolveGoogleMetadata($isbn, $lookupTitleCandidates, $title, $author);
+        if (is_array($google)) {
+            $merged = $this->mergeMissingFields($merged, $google);
+            $fieldSources = $this->applyProviderFieldSources($fieldSources, $merged, $google);
+            $source = $this->preferCatalogSource($source, $merged, $google);
         }
 
-        if (! $secondary) {
-            foreach ($lookupTitleCandidates as $lookupTitle) {
-                $secondary = $this->isbnLookupService->lookupOpenLibraryByTitleAuthor($lookupTitle, $author);
-                if ($secondary) {
-                    break;
-                }
+        if ($this->hasMissingCatalogFields($merged) || $this->clean($merged['author'] ?? null) === null) {
+            $openLibrary = $this->resolveOpenLibraryMetadata($isbn, $lookupTitleCandidates, $title, $author);
+            if (is_array($openLibrary)) {
+                $merged = $this->mergeMissingFields($merged, $openLibrary);
+                $fieldSources = $this->applyProviderFieldSources($fieldSources, $merged, $openLibrary);
+                $source = $this->preferCatalogSource($source, $merged, $openLibrary);
             }
-        }
-
-        $merged = $this->mergeMissingFields($primary, $secondary);
-        if (is_array($secondary)) {
-            $fieldSources = $this->applyProviderFieldSources($fieldSources, $merged, $secondary);
         }
 
         return [
             'metadata' => $merged,
             'field_sources' => $fieldSources,
-            'source' => is_array($secondary) ? $this->clean($secondary['source'] ?? null) : null,
+            'source' => $source,
         ];
+    }
+
+    private function resolvePrimaryProviderMetadata(?string $isbn, array $lookupTitleCandidates, ?string $aiTitle, ?string $aiAuthor): ?array
+    {
+        $google = $this->resolveGoogleMetadata($isbn, $lookupTitleCandidates, $aiTitle, $aiAuthor);
+        if ($google) {
+            return $google;
+        }
+
+        return $this->resolveOpenLibraryMetadata($isbn, $lookupTitleCandidates, $aiTitle, $aiAuthor);
+    }
+
+    private function resolveGoogleMetadata(?string $isbn, array $lookupTitleCandidates, ?string $aiTitle, ?string $aiAuthor): ?array
+    {
+        if ($isbn) {
+            $googleByIsbn = $this->isbnLookupService->lookupGoogleByIsbnOnly($isbn);
+            if ($googleByIsbn && $this->isMetadataConsistentWithAiSignals($googleByIsbn, $aiTitle, $aiAuthor)) {
+                return $googleByIsbn;
+            }
+        }
+
+        foreach ($lookupTitleCandidates as $lookupTitle) {
+            $google = $this->isbnLookupService->searchGoogleByTitleAuthorOnly($lookupTitle, $aiAuthor);
+            if ($google && $this->isMetadataConsistentWithAiSignals($google, $aiTitle, $aiAuthor)) {
+                return $google;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveOpenLibraryMetadata(?string $isbn, array $lookupTitleCandidates, ?string $aiTitle, ?string $aiAuthor): ?array
+    {
+        if ($isbn) {
+            $openLibraryByIsbn = $this->isbnLookupService->lookupOpenLibraryByIsbn($isbn);
+            if ($openLibraryByIsbn && $this->isMetadataConsistentWithAiSignals($openLibraryByIsbn, $aiTitle, $aiAuthor)) {
+                return $openLibraryByIsbn;
+            }
+        }
+
+        foreach ($lookupTitleCandidates as $lookupTitle) {
+            $openLibrary = $this->isbnLookupService->lookupOpenLibraryByTitleAuthor($lookupTitle, $aiAuthor);
+            if ($openLibrary && $this->isMetadataConsistentWithAiSignals($openLibrary, $aiTitle, $aiAuthor)) {
+                return $openLibrary;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -356,7 +418,7 @@ class AiBookScanPipelineService
             return $primary;
         }
 
-        foreach (['category', 'description', 'publisher', 'published_year', 'source_url'] as $field) {
+        foreach (['title', 'author', 'isbn', 'cover_url', 'category', 'description', 'publisher', 'published_year', 'source_url'] as $field) {
             if ($this->clean($primary[$field] ?? null) === null && $this->clean($secondary[$field] ?? null) !== null) {
                 $primary[$field] = $secondary[$field];
             }
@@ -380,6 +442,24 @@ class AiBookScanPipelineService
         }
 
         return $primary;
+    }
+
+    private function preferCatalogSource(?string $currentSource, array $mergedMetadata, array $secondary): ?string
+    {
+        $secondarySource = $this->clean($secondary['source'] ?? null);
+        if ($secondarySource === null) {
+            return $currentSource;
+        }
+
+        if ($this->clean($mergedMetadata['description'] ?? null) !== null && $this->clean($secondary['description'] ?? null) !== null) {
+            return $secondarySource;
+        }
+
+        if (in_array($currentSource, [null, 'ai'], true)) {
+            return $secondarySource;
+        }
+
+        return $currentSource;
     }
 
     private function applyProviderFieldSources(array $fieldSources, array $mergedMetadata, array $secondary): array
@@ -462,8 +542,15 @@ class AiBookScanPipelineService
         }
 
         if (! $this->shouldTranslateToIndonesian($text)) {
+            \Illuminate\Support\Facades\Log::debug('[Pipeline] Description already in Indonesian, skipping translation', [
+                'preview' => mb_substr($text, 0, 100),
+            ]);
             return $text;
         }
+
+        \Illuminate\Support\Facades\Log::info('[Pipeline] Translating description to Indonesian', [
+            'text_length' => strlen($text),
+        ]);
 
         $cacheKey = 'book_desc:id_translation:' . sha1($text);
         $cached = Cache::get($cacheKey);
@@ -473,11 +560,15 @@ class AiBookScanPipelineService
 
         try {
             $translated = $this->ollamaService->translateTextToIndonesian($text);
-        } catch (\RuntimeException) {
+        } catch (\RuntimeException $e) {
+            \Illuminate\Support\Facades\Log::error('[Pipeline] Translation failed, returning original text', [
+                'error' => $e->getMessage(),
+            ]);
             $translated = null;
         }
 
-        if (! $translated) {
+        if (! $translated || $this->translationLooksUnchanged($text, $translated) || $this->stillLooksEnglish($translated)) {
+            \Illuminate\Support\Facades\Log::warning('[Pipeline] Translation returned empty, using original English text');
             return $text;
         }
 
@@ -488,6 +579,10 @@ class AiBookScanPipelineService
 
     private function shouldTranslateToIndonesian(string $text): bool
     {
+        if (preg_match_all('/\b(the|and|with|from|that|this|your|you|for|into|keep|work|life|creative|rules|daily|today|playing|creating)\b/i', $text) >= 3) {
+            return true;
+        }
+
         if ($this->isLikelyEnglish($text)) {
             return true;
         }
@@ -513,6 +608,39 @@ class AiBookScanPipelineService
         }
 
         return $hits >= 2;
+    }
+
+    private function localizeCategoryToIndonesian(?string $category): ?string
+    {
+        $value = $this->clean($category);
+        if (! $value) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($value));
+
+        return match ($normalized) {
+            'self-help', 'self help' => 'Pengembangan Diri',
+            'business & economics' => 'Bisnis & Ekonomi',
+            'juvenile fiction' => 'Fiksi Anak',
+            'juvenile nonfiction', 'juvenile non-fiction' => 'Nonfiksi Anak',
+            'history' => 'Sejarah',
+            'fiction' => 'Fiksi',
+            'nonfiction', 'non-fiction' => 'Nonfiksi',
+            'technology' => 'Teknologi',
+            'computers' => 'Komputer',
+            default => $value,
+        };
+    }
+
+    private function translationLooksUnchanged(string $source, string $translated): bool
+    {
+        return $this->normalizeComparableText($source) === $this->normalizeComparableText($translated);
+    }
+
+    private function stillLooksEnglish(string $text): bool
+    {
+        return $this->shouldTranslateToIndonesian($text);
     }
 
     private function isLikelyEnglish(string $text): bool
@@ -758,5 +886,36 @@ class AiBookScanPipelineService
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
 
         return trim($value);
+    }
+
+    private function isOpenLibrarySource(array $metadata): bool
+    {
+        return strtolower((string) ($this->clean($metadata['source'] ?? null) ?? '')) === 'openlibrary';
+    }
+
+    private function hasMissingCatalogFields(array $metadata): bool
+    {
+        foreach (['description', 'category', 'isbn', 'publisher', 'published_year'] as $field) {
+            if ($this->clean($metadata[$field] ?? null) === null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, string> $lookupTitleCandidates
+     */
+    private function retryGoogleAfterOpenLibrary(array $lookupTitleCandidates, ?string $author): ?array
+    {
+        foreach ($lookupTitleCandidates as $lookupTitle) {
+            $result = $this->isbnLookupService->searchGoogleByTitleAuthorOnly($lookupTitle, $author);
+            if (is_array($result) && strtolower((string) ($result['source'] ?? '')) === 'google') {
+                return $result;
+            }
+        }
+
+        return null;
     }
 }

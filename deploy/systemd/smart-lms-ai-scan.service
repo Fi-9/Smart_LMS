@@ -1,0 +1,17 @@
+[Unit]
+Description=Smart LMS AI Scan Queue Worker
+After=network.target mariadb.service mysql.service redis.service
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/smart_lms
+ExecStart=/usr/bin/php /var/www/smart_lms/artisan queue:work database --queue=ai-scan --tries=1 --sleep=1 --timeout=600 --backoff=5 --memory=768
+KillSignal=SIGTERM
+TimeoutStopSec=610
+
+[Install]
+WantedBy=multi-user.target
+

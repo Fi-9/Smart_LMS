@@ -6,7 +6,7 @@
         <p class="page-subtitle">Atur koneksi Ollama, Tavily, dan default scan mode langsung dari panel admin.</p>
     </div>
 
-    <div class="mb-6 grid gap-4 xl:grid-cols-3">
+    <div class="mb-6 grid gap-4 xl:grid-cols-4">
         <div class="rounded-[1.25rem] border border-gray-200 bg-white p-5">
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Ollama</p>
             <h3 class="mt-2 text-lg font-bold text-gray-900">{{ strtoupper($ai_diagnostics['ollama']['status'] ?? 'unknown') }}</h3>
@@ -19,12 +19,26 @@
             <p class="mt-2 text-sm text-gray-600">{{ $ai_diagnostics['websearch']['detail'] ?? '' }}</p>
             <p class="mt-2 text-xs text-gray-500">{{ $ai_diagnostics['websearch']['endpoint'] ?? '-' }}</p>
         </div>
+        <div class="rounded-[1.25rem] border border-gray-200 bg-white p-5">
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">AI Queue</p>
+            <h3 class="mt-2 text-lg font-bold text-gray-900">{{ strtoupper($ai_diagnostics['queue_worker']['status'] ?? 'unknown') }}</h3>
+            <p class="mt-2 text-sm text-gray-600">{{ $ai_diagnostics['queue_worker']['detail'] ?? '' }}</p>
+            <p class="mt-2 text-xs text-gray-500">{{ $ai_diagnostics['queue_worker']['endpoint'] ?? '-' }}</p>
+        </div>
         <div class="rounded-[1.25rem] border border-primary-100 bg-primary-50/70 p-5">
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary-700">Scan Default</p>
             <h3 class="mt-2 text-lg font-bold text-gray-900">{{ strtoupper($ai_runtime['recommended_scan_mode'] ?? 'simple') }}</h3>
             <p class="mt-2 text-sm text-gray-600">Mode ini dipakai sebagai rekomendasi awal di halaman import.</p>
         </div>
     </div>
+
+    @if(($ai_diagnostics['queue_worker']['status'] ?? null) === 'warning')
+        <div class="mb-6 rounded-[1.5rem] border border-amber-200 bg-amber-50 px-5 py-4">
+            <p class="text-sm font-semibold text-amber-800">Worker `ai-scan` belum memproses antrian.</p>
+            <p class="mt-1 text-sm text-amber-700">{{ $ai_diagnostics['queue_worker']['detail'] ?? '' }}</p>
+            <code class="mt-3 block overflow-x-auto rounded-xl bg-white px-4 py-3 text-xs text-gray-800">{{ $ai_diagnostics['queue_worker']['command'] ?? 'php artisan queue:work database --queue=ai-scan --tries=1 --sleep=1' }}</code>
+        </div>
+    @endif
 
     <form method="POST" action="{{ route('settings.update') }}" class="space-y-6">
         @csrf
@@ -112,6 +126,30 @@
                 </div>
             </section>
         </div>
+
+        <section class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
+            <h2 class="text-lg font-bold text-gray-900">AI Scan Worker</h2>
+            <p class="mt-1 text-sm text-gray-500">Gunakan Supervisor atau systemd agar queue `ai-scan` selalu hidup otomatis.</p>
+
+            <div class="mt-5 grid gap-4 lg:grid-cols-2">
+                <div class="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+                    <p class="text-sm font-semibold text-gray-900">Supervisor</p>
+                    <p class="mt-2 text-sm text-gray-600">Template siap pakai ada di <span class="font-mono text-xs">deploy/supervisor/smart-lms-ai-scan.conf</span></p>
+                    <code class="mt-3 block overflow-x-auto rounded-xl bg-white px-4 py-3 text-xs text-gray-800">sudo cp deploy/supervisor/smart-lms-ai-scan.conf /etc/supervisor/conf.d/</code>
+                </div>
+                <div class="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+                    <p class="text-sm font-semibold text-gray-900">systemd</p>
+                    <p class="mt-2 text-sm text-gray-600">Template siap pakai ada di <span class="font-mono text-xs">deploy/systemd/smart-lms-ai-scan.service</span></p>
+                    <code class="mt-3 block overflow-x-auto rounded-xl bg-white px-4 py-3 text-xs text-gray-800">sudo cp deploy/systemd/smart-lms-ai-scan.service /etc/systemd/system/</code>
+                </div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-primary-100 bg-primary-50/70 px-5 py-4">
+                <p class="text-sm font-semibold text-primary-900">Command worker</p>
+                <code class="mt-3 block overflow-x-auto rounded-xl bg-white px-4 py-3 text-xs text-gray-800">php artisan queue:work database --queue=ai-scan --tries=1 --sleep=1 --timeout=600 --backoff=5 --memory=768</code>
+                <p class="mt-3 text-xs text-primary-800">Panduan lengkap ada di <span class="font-mono">docs/queue_worker_setup.md</span>.</p>
+            </div>
+        </section>
 
         @if($errors->any())
             <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">

@@ -3,15 +3,18 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Jobs\ProcessAiBatchScanBook;
 use App\Models\Book;
 use App\Models\Rack;
 use App\Models\User;
+use App\Services\AiBatchScanDraftService;
 use App\Services\AiBookScanPipelineService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AiBatchImportFlowTest extends TestCase
@@ -108,6 +111,83 @@ class AiBatchImportFlowTest extends TestCase
         $page->assertSee('Productivity');
         $page->assertSee('Judul: AI Cover');
         $page->assertSee('Kategori: Google Books');
+    }
+
+    public function test_batch_scan_can_be_dispatched_to_queue_and_status_checked(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create(['role' => UserRole::ADMIN->value]);
+
+        $response = $this->actingAs($user)
+            ->withHeader('Accept', 'application/json')
+            ->post(route('books.import.ai-batch-scan'), [
+                'mode' => 'full',
+                'books' => [
+                    [
+                        'front_image' => UploadedFile::fake()->image('front-1.jpg'),
+                    ],
+                    [
+                        'front_image' => UploadedFile::fake()->image('front-2.jpg'),
+                        'back_image' => UploadedFile::fake()->image('back-2.jpg'),
+                    ],
+                ],
+            ]);
+
+        $response->assertAccepted();
+        $response->assertJsonStructure([
+            'message',
+            'draft_token',
+            'status_url',
+            'summary' => ['total', 'pending'],
+        ]);
+
+        Queue::assertPushed(ProcessAiBatchScanBook::class, 2);
+
+        $draftToken = (string) $response->json('draft_token');
+        $draft = app(AiBatchScanDraftService::class)->get($draftToken);
+
+        $this->assertNotNull($draft);
+        $this->assertSame('queued', $draft['status']);
+        $this->assertSame(2, $draft['summary']['pending']);
+
+        $statusResponse = $this->actingAs($user)
+            ->get(route('books.import.ai-batch-status', ['token' => $draftToken]));
+
+        $statusResponse->assertOk();
+        $statusResponse->assertJsonPath('summary.total', 2);
+        $statusResponse->assertJsonPath('summary.pending', 2);
+    }
+
+    public function test_batch_scan_can_be_cancelled(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create(['role' => UserRole::ADMIN->value]);
+
+        $response = $this->actingAs($user)
+            ->withHeader('Accept', 'application/json')
+            ->post(route('books.import.ai-batch-scan'), [
+                'mode' => 'full',
+                'books' => [
+                    [
+                        'front_image' => UploadedFile::fake()->image('front-1.jpg'),
+                    ],
+                    [
+                        'front_image' => UploadedFile::fake()->image('front-2.jpg'),
+                    ],
+                ],
+            ]);
+
+        $draftToken = (string) $response->json('draft_token');
+
+        $cancelResponse = $this->actingAs($user)
+            ->withHeader('Accept', 'application/json')
+            ->post(route('books.import.ai-batch-cancel', ['token' => $draftToken]));
+
+        $cancelResponse->assertOk();
+        $cancelResponse->assertJsonPath('draft.status', 'cancelled');
+        $cancelResponse->assertJsonPath('draft.summary.cancelled', 2);
     }
 
     public function test_review_commit_creates_books_and_categories_from_scan_draft(): void
