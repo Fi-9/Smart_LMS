@@ -15,7 +15,7 @@ class ScanBookImagesRequest extends FormRequest
     {
         return [
             'images' => ['required', 'array', 'min:1', 'max:5'],
-            'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'images.*' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,avif,heic,heif,bmp', 'max:10240'],
             'mode' => ['nullable', 'string', 'in:simple,full'],
         ];
     }

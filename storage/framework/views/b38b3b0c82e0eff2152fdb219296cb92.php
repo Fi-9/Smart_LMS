@@ -6,7 +6,7 @@
         $hasManualErrors = collect($manualFieldNames)->contains(fn ($name) => $errors->has($name));
         $defaultBatchBooks = old('books');
         if (! is_array($defaultBatchBooks) || count($defaultBatchBooks) === 0) {
-            $defaultBatchBooks = [[], [], []];
+            $defaultBatchBooks = [[]];
         }
 
         $draftBooks = collect($ai_scan_draft['books'] ?? []);
@@ -149,7 +149,6 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
-                                <button type="button" id="batch-cancel-btn" class="hidden rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50">Batalkan Scan</button>
                                 <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-primary-700">
                                     <span id="batch-scan-live-count">0</span>/<span id="batch-scan-live-total">0</span> buku
                                 </div>
@@ -180,12 +179,12 @@
                                         <div class="flex flex-col gap-3 xl:flex-row xl:items-end">
                                             <div class="min-w-0 flex-1">
                                                 <label class="mb-2 block text-sm font-semibold text-gray-700">Front Cover *</label>
-                                                <input type="file" name="books[<?php echo e($index); ?>][front_image]" accept=".jpg,.jpeg,.png,.webp,image/*" class="form-input" required data-field="front_image">
+                                                <input type="file" name="books[<?php echo e($index); ?>][front_image]" accept=".jpg,.jpeg,.png,.webp,.avif,image/*" class="form-input" required data-field="front_image">
                                                 <p class="mt-2 text-xs text-gray-500">Untuk cover, judul, penulis, ISBN, dan gambar katalog.</p>
                                             </div>
                                             <div class="min-w-0 flex-1">
                                                 <label class="mb-2 block text-sm font-semibold text-gray-700">Back Cover</label>
-                                                <input type="file" name="books[<?php echo e($index); ?>][back_image]" accept=".jpg,.jpeg,.png,.webp,image/*" class="form-input" data-field="back_image">
+                                                <input type="file" name="books[<?php echo e($index); ?>][back_image]" accept=".jpg,.jpeg,.png,.webp,.avif,image/*" class="form-input" data-field="back_image">
                                                 <p class="mt-2 text-xs text-gray-500">Dipakai untuk bantu baca sinopsis jika deskripsi internet tidak cocok.</p>
                                             </div>
                                         </div>
@@ -212,6 +211,7 @@
                         <p class="text-sm text-primary-900">Setelah scan selesai, sistem langsung pindah ke review dan grouping kategori.</p>
                         <div class="flex flex-wrap items-center gap-3">
                             <div id="batch-ready-indicator" class="text-xs font-semibold text-primary-700">0 buku siap discan</div>
+                            <button type="button" id="batch-cancel-btn" class="hidden inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">Batalkan Scan</button>
                             <button type="submit" id="batch-scan-submit" class="inline-flex items-center gap-2 rounded-xl bg-primary-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:bg-gray-400" <?php if(!$visionOnline): echo 'disabled'; endif; ?>>
                                 <span class="scan-action-spinner scan-action-spinner-light hidden" id="batch-scan-submit-spinner"></span>
                                 <span id="batch-scan-submit-label">Jalankan Batch Scan AI</span>
@@ -263,7 +263,13 @@
                                                     <span class="text-sm text-amber-700"><?php echo e($book['error']); ?></span>
                                                 <?php endif; ?>
                                             </div>
-                                            <button type="button" class="remove-review-book rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-600 transition hover:bg-red-50">Hapus</button>
+                                            <div class="flex flex-wrap gap-2">
+                                                <button type="button" class="enrich-review-book inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary-700 transition hover:bg-primary-100" title="Cari otomatis metadata yang kosong berdasarkan Judul & Penulis">
+                                                    <span>Cari Data Kosong</span>
+                                                    <span class="enrich-spinner border-primary-500 hidden h-3 w-3 animate-spin rounded-full border-2 border-t-transparent"></span>
+                                                </button>
+                                                <button type="button" class="remove-review-book rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-600 transition hover:bg-red-50">Hapus</button>
+                                            </div>
                                         </div>
 
                                         <?php if(!empty($book['field_sources']) && is_array($book['field_sources'])): ?>
@@ -288,44 +294,42 @@
                                                 <?php endif; ?>
                                             </div>
 
-                                            <div class="grid gap-4">
-                                                <div class="grid gap-4 md:grid-cols-2">
-                                                    <div>
-                                                        <label class="form-label">Title</label>
-                                                        <input type="text" name="books[<?php echo e($flatIndex); ?>][title]" value="<?php echo e($book['title'] ?? ''); ?>" class="form-input" data-review-field="title">
-                                                    </div>
-                                                    <div>
-                                                        <label class="form-label">Author</label>
-                                                        <input type="text" name="books[<?php echo e($flatIndex); ?>][author]" value="<?php echo e($book['author'] ?? ''); ?>" class="form-input" data-review-field="author">
-                                                    </div>
-                                                    <div>
-                                                        <label class="form-label">ISBN</label>
-                                                        <input type="text" name="books[<?php echo e($flatIndex); ?>][isbn]" value="<?php echo e($book['isbn'] ?? ''); ?>" class="form-input" data-review-field="isbn">
-                                                    </div>
-                                                    <div>
-                                                        <label class="form-label">Category</label>
-                                                        <input list="category-list" type="text" name="books[<?php echo e($flatIndex); ?>][category_name]" value="<?php echo e($book['category_name'] ?? $categoryName); ?>" class="form-input" data-review-field="category_name">
-                                                    </div>
-                                                    <div>
-                                                        <label class="form-label">Rack</label>
-                                                        <select name="books[<?php echo e($flatIndex); ?>][rack_id]" class="form-input" data-review-field="rack_id">
-                                                            <option value="">Auto Assign</option>
-                                                            <?php $__currentLoopData = $racks; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $rack): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                                                <option value="<?php echo e($rack->id); ?>"><?php echo e($rack->name); ?></option>
-                                                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label class="form-label">Cover URL</label>
-                                                        <input type="text" name="books[<?php echo e($flatIndex); ?>][cover_url]" value="<?php echo e($book['cover_url'] ?? ''); ?>" class="form-input" data-review-field="cover_url">
-                                                    </div>
-                                                </div>
-
+                                            <div class="grid gap-4 md:grid-cols-2 content-start">
                                                 <div>
-                                                    <label class="form-label">Description</label>
-                                                    <textarea name="books[<?php echo e($flatIndex); ?>][description]" class="form-input min-h-[140px]" data-review-field="description"><?php echo e($book['description'] ?? ''); ?></textarea>
+                                                    <label class="form-label">Title</label>
+                                                    <input type="text" name="books[<?php echo e($flatIndex); ?>][title]" value="<?php echo e($book['title'] ?? ''); ?>" class="form-input" data-review-field="title">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Author</label>
+                                                    <input type="text" name="books[<?php echo e($flatIndex); ?>][author]" value="<?php echo e($book['author'] ?? ''); ?>" class="form-input" data-review-field="author">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">ISBN</label>
+                                                    <input type="text" name="books[<?php echo e($flatIndex); ?>][isbn]" value="<?php echo e($book['isbn'] ?? ''); ?>" class="form-input" data-review-field="isbn">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Category</label>
+                                                    <input list="category-list" type="text" name="books[<?php echo e($flatIndex); ?>][category_name]" value="<?php echo e($book['category_name'] ?? $categoryName); ?>" class="form-input" data-review-field="category_name">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Rack</label>
+                                                    <select name="books[<?php echo e($flatIndex); ?>][rack_id]" class="form-input" data-review-field="rack_id">
+                                                        <option value="">Auto Assign</option>
+                                                        <?php $__currentLoopData = $racks; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $rack): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                                            <option value="<?php echo e($rack->id); ?>"><?php echo e($rack->name); ?></option>
+                                                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Cover URL</label>
+                                                    <input type="text" name="books[<?php echo e($flatIndex); ?>][cover_url]" value="<?php echo e($book['cover_url'] ?? ''); ?>" class="form-input" data-review-field="cover_url">
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        <div class="mt-4">
+                                            <label class="form-label">Description</label>
+                                            <textarea name="books[<?php echo e($flatIndex); ?>][description]" class="form-input min-h-[140px] text-justify" data-review-field="description"><?php echo e($book['description'] ?? ''); ?></textarea>
                                         </div>
                                     </div>
                                     <?php $flatIndex++; ?>
@@ -334,9 +338,9 @@
                         </section>
                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
 
-                    <div class="sticky bottom-6 z-20 flex justify-end">
-                        <div class="rounded-2xl border border-primary-100 bg-white/95 px-4 py-4 shadow-xl backdrop-blur">
-                            <button type="submit" id="review-submit-button" class="rounded-xl bg-primary-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:bg-gray-400">Simpan Semua ke Library</button>
+                    <div class="fixed bottom-6 right-8 z-50 flex justify-end">
+                        <div class="rounded-2xl border border-primary-100 bg-white/95 px-4 py-4 shadow-2xl backdrop-blur-md">
+                            <button type="submit" id="review-submit-button" class="rounded-xl bg-primary-700 px-6 py-3.5 text-sm font-bold tracking-wide text-white transition-all hover:bg-primary-800 hover:shadow-lg disabled:cursor-not-allowed disabled:bg-gray-400">Simpan Semua ke Library</button>
                         </div>
                     </div>
                 </form>
@@ -391,7 +395,7 @@ unset($__errorArgs, $__bag); ?>
                             <div class="grid gap-4">
                                 <div class="flex flex-col gap-3 xl:flex-row xl:items-end">
                                     <div class="min-w-0 flex-1">
-                                        <input id="ai-image-input" type="file" class="form-input" accept=".jpg,.jpeg,.png,.webp,image/*" multiple>
+                                        <input id="ai-image-input" type="file" class="form-input" accept=".jpg,.jpeg,.png,.webp,.avif,image/*" multiple>
                                         <p class="mt-2 text-xs text-gray-500">Upload 1 gambar untuk front cover, atau 2 gambar dengan urutan front dulu lalu back cover.</p>
                                     </div>
                                     <div class="w-full xl:w-auto">
@@ -452,7 +456,7 @@ unset($__errorArgs, $__bag); ?>
                     </div>
                     <div class="md:col-span-2">
                         <label for="description-input" class="form-label">Description (optional)</label>
-                        <textarea id="description-input" name="description" class="form-input h-24"><?php echo e(old('description')); ?></textarea>
+                        <textarea id="description-input" name="description" class="form-input h-24 text-justify"><?php echo e(old('description')); ?></textarea>
                         <p id="description-source-note" class="mt-1 text-xs text-gray-500">Sumber deskripsi akan muncul di sini setelah ISBN lookup atau AI scan.</p>
                     </div>
                 </div>
@@ -600,6 +604,12 @@ unset($__errorArgs, $__bag); ?>
             const existingBatchDraftToken = <?php echo json_encode($ai_scan_draft_token, 15, 512) ?>;
             let activeBatchDraftToken = existingBatchDraftToken;
             let batchPollingTimer = null;
+            const validateImageFile = (file) => {
+                if (!file) return false;
+                const ext = file.name.split('.').pop().toLowerCase();
+                return ['jpg', 'jpeg', 'png', 'webp', 'avif', 'heic', 'heif', 'bmp'].includes(ext) || file.type.startsWith('image/');
+            };
+
             const updateSlotPreview = (card) => {
                 if (!card) return;
                 const frontInput = card.querySelector('[data-field="front_image"]');
@@ -610,26 +620,50 @@ unset($__errorArgs, $__bag); ?>
                 const backStatus = card.querySelector('[data-back-status]');
                 const scanStatus = card.querySelector('[data-scan-status]');
 
-                const hasFront = Boolean(frontInput?.files?.length);
-                const hasBack = Boolean(backInput?.files?.length);
+                const frontFile = frontInput?.files?.[0];
+                const backFile = backInput?.files?.[0];
+                const hasFrontRaw = Boolean(frontFile);
+                const hasFrontValid = validateImageFile(frontFile);
+                const hasBackValid = validateImageFile(backFile);
 
                 if (frontStatus) {
-                    frontStatus.textContent = hasFront ? `Front siap: ${frontInput.files[0].name}` : 'Front belum dipilih';
-                    frontStatus.className = `rounded-full px-2.5 py-1 ${hasFront ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'}`;
+                    if (hasFrontValid) {
+                        frontStatus.textContent = `Front siap: ${frontFile.name}`;
+                        frontStatus.className = 'rounded-full bg-primary-100 px-2.5 py-1 text-primary-700';
+                    } else if (hasFrontRaw) {
+                        frontStatus.textContent = `Format tidak valid`;
+                        frontStatus.className = 'rounded-full bg-red-100 px-2.5 py-1 text-red-700';
+                    } else {
+                        frontStatus.textContent = 'Front belum dipilih';
+                        frontStatus.className = 'rounded-full bg-gray-100 px-2.5 py-1 text-gray-500';
+                    }
                 }
                 if (backStatus) {
-                    backStatus.textContent = hasBack ? `Back siap: ${backInput.files[0].name}` : 'Back opsional';
-                    backStatus.className = `rounded-full px-2.5 py-1 ${hasBack ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`;
+                    if (hasBackValid) {
+                        backStatus.textContent = `Back siap: ${backFile.name}`;
+                        backStatus.className = 'rounded-full bg-amber-100 px-2.5 py-1 text-amber-700';
+                    } else if (backFile) {
+                        backStatus.textContent = `Format tidak valid`;
+                        backStatus.className = 'rounded-full bg-red-100 px-2.5 py-1 text-red-700';
+                    } else {
+                        backStatus.textContent = 'Back opsional';
+                        backStatus.className = 'rounded-full bg-gray-100 px-2.5 py-1 text-gray-500';
+                    }
                 }
                 if (scanStatus) {
-                    scanStatus.textContent = hasFront ? 'Siap discan' : 'Belum discan';
-                    scanStatus.className = `rounded-full px-2.5 py-1 ${hasFront ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`;
+                    if (hasFrontValid) {
+                        scanStatus.textContent = 'Siap discan';
+                        scanStatus.className = 'rounded-full bg-sky-100 px-2.5 py-1 text-sky-700';
+                    } else {
+                        scanStatus.textContent = 'Belum/Tidak bisa discan';
+                        scanStatus.className = 'rounded-full bg-gray-100 px-2.5 py-1 text-gray-500';
+                    }
                 }
-                card.classList.toggle('is-scanning', hasFront || hasBack);
+                card.classList.toggle('is-scanning', hasFrontValid || hasBackValid);
 
                 if (preview && placeholder) {
-                    if (hasFront) {
-                        preview.src = URL.createObjectURL(frontInput.files[0]);
+                    if (hasFrontValid) {
+                        preview.src = URL.createObjectURL(frontFile);
                         preview.classList.remove('hidden');
                         placeholder.classList.add('hidden');
                     } else {
@@ -643,7 +677,7 @@ unset($__errorArgs, $__bag); ?>
             const updateBatchCounters = () => {
                 if (!batchList) return;
                 const cards = [...batchList.querySelectorAll('[data-ai-book-item]')];
-                const ready = cards.filter((card) => card.querySelector('[data-field="front_image"]')?.files?.length).length;
+                const ready = cards.filter((card) => validateImageFile(card.querySelector('[data-field="front_image"]')?.files?.[0])).length;
                 if (batchReadyIndicator) {
                     batchReadyIndicator.textContent = `${ready} buku siap discan`;
                 }
@@ -852,7 +886,7 @@ unset($__errorArgs, $__bag); ?>
                 event.preventDefault();
                 const cards = [...batchList.querySelectorAll('[data-ai-book-item]')];
                 const total = cards.length;
-                const ready = cards.filter((card) => card.querySelector('[data-field="front_image"]')?.files?.length).length;
+                const ready = cards.filter((card) => validateImageFile(card.querySelector('[data-field="front_image"]')?.files?.[0])).length;
 
                 if (ready === 0) {
                     if (batchScanStatus) batchScanStatus.classList.remove('hidden');
@@ -871,8 +905,18 @@ unset($__errorArgs, $__bag); ?>
                 stopBatchPolling();
 
                 cards.forEach((card) => {
-                    if (card.querySelector('[data-field="front_image"]')?.files?.length) {
-                        renderBatchCardProgress(card, { scan_status: 'pending' });
+                    const frontFile = card.querySelector('[data-field="front_image"]')?.files?.[0];
+                    if (frontFile) {
+                        if (validateImageFile(frontFile)) {
+                            renderBatchCardProgress(card, { scan_status: 'pending' });
+                        } else {
+                            renderBatchCardProgress(card, { scan_status: 'failed' });
+                            const scanStatus = card.querySelector('[data-scan-status]');
+                            if(scanStatus) {
+                                scanStatus.textContent = 'Format salah, dilewati';
+                                scanStatus.className = 'rounded-full bg-red-100 px-2.5 py-1 text-red-700';
+                            }
+                        }
                     }
                 });
 
@@ -902,7 +946,7 @@ unset($__errorArgs, $__bag); ?>
                 }
             });
 
-            if (existingBatchDraftToken) {
+            if (existingBatchDraftToken && !<?php echo json_encode($aiDraftFinished, 15, 512) ?>) {
                 pollBatchStatus(existingBatchDraftToken);
             }
 
@@ -965,12 +1009,74 @@ unset($__errorArgs, $__bag); ?>
             };
 
             document.querySelectorAll('[data-review-list]').forEach((list) => {
-                list.addEventListener('click', (event) => {
+                list.addEventListener('click', async (event) => {
                     const removeButton = event.target.closest('.remove-review-book');
-                    if (!removeButton) return;
-                    event.preventDefault();
-                    removeButton.closest('[data-review-book-item]')?.remove();
-                    reindexReviewCards();
+                    if (removeButton) {
+                        event.preventDefault();
+                        removeButton.closest('[data-review-book-item]')?.remove();
+                        reindexReviewCards();
+                        return;
+                    }
+
+                    const enrichButton = event.target.closest('.enrich-review-book');
+                    if (enrichButton) {
+                        event.preventDefault();
+                        const card = enrichButton.closest('[data-review-book-item]');
+                        if (!card) return;
+
+                        const titleInput = card.querySelector('[data-review-field="title"]');
+                        const authorInput = card.querySelector('[data-review-field="author"]');
+                        const isbnInput = card.querySelector('[data-review-field="isbn"]');
+                        const descInput = card.querySelector('[data-review-field="description"]');
+                        const coverUrlInput = card.querySelector('[data-review-field="cover_url"]');
+
+                        const spinner = enrichButton.querySelector('.enrich-spinner');
+                        const span = enrichButton.querySelector('span:not(.enrich-spinner)');
+                        enrichButton.disabled = true;
+                        spinner?.classList.remove('hidden');
+                        if (span) span.textContent = 'Mencari...';
+
+                        try {
+                            const response = await fetch("<?php echo e(route('books.import.enrich')); ?>", {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': '<?php echo e(csrf_token()); ?>',
+                                    'Accept': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    title: titleInput?.value || '',
+                                    author: authorInput?.value || '',
+                                    isbn: isbnInput?.value || ''
+                                }),
+                            });
+                            const data = await response.json();
+                            if (!response.ok) throw new Error(data.message || 'Gagal mencari data');
+
+                            if (titleInput && data.title) titleInput.value = data.title;
+                            if (authorInput && data.author) authorInput.value = data.author;
+                            if (isbnInput && data.isbn) isbnInput.value = data.isbn;
+                            if (descInput && data.description && !descInput.value) descInput.value = data.description;
+                            if (coverUrlInput && data.cover_url && !coverUrlInput.value) coverUrlInput.value = data.cover_url;
+
+                            enrichButton.classList.add('bg-green-50', 'text-green-700', 'border-green-200');
+                            enrichButton.classList.remove('bg-primary-50', 'text-primary-700', 'border-primary-200');
+                            if (span) span.textContent = 'Berhasil';
+                            
+                            setTimeout(() => {
+                                enrichButton.classList.remove('bg-green-50', 'text-green-700', 'border-green-200');
+                                enrichButton.classList.add('bg-primary-50', 'text-primary-700', 'border-primary-200');
+                                if (span) span.textContent = 'Cari Data Kosong';
+                            }, 3000);
+
+                        } catch (error) {
+                            alert('Pencarian data gagal: ' + error.message);
+                            if (span) span.textContent = 'Cari Data Kosong';
+                        } finally {
+                            enrichButton.disabled = false;
+                            spinner?.classList.add('hidden');
+                        }
+                    }
                 });
             });
 

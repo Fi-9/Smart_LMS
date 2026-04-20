@@ -8,6 +8,25 @@
   - File yang berubah
   - Dampak/tujuan
 
+## 2026-04-08
+
+### AI Upload Form & UI Refinements
+- Melonggarkan validasi format gambar AI scan pada frontend dan backend supaya mendukung `.avif`, `.heic`, `.heif`, dan `.bmp`.
+- Mengupdate `ScanBookImagesRequest` untuk input AI manual agar file selain format standar (seperti `.avif`) bisa diproses oleh backend.
+- Menata ulang layout (struktur HTML) kolom deskripsi pada tab *Review & Grouping* agar merentang membentang penuh (full-width) sampai ke bawah area Cover Buku. Hal ini untuk menghilangkan *blank white space* (ruang kosong putih) di bawah sampul buku sehingga visual lebih padat dan tertata (*rata kanan kiri/justify* layouting).
+- Menambahkan style `text-justify` pada *textarea* deskripsi supaya paragraf teks di dalamnya rata secara merata.
+- Penanganan anti-stuck Batch Scan *frontend* diperkuat: sistem mendeteksi slot gagal dan tetap mengirim file gambar yang valid ke process antrian `jobs`.
+- Menghidupkan fitur **Cari Data Kosong** di tiap slot *Review*: sekarang tombol tersebut berfungsi mencari metadata yang kosong langsung ke provider (Google/OpenLibrary) berdasarkan Judul dan Penulis yang dibaca AI. Dilengkapi animasi *loading spinner* dan transisi sukses (warna hijau) tanpa berpindah halaman.
+- Mengubah posisi antarmuka tombol **Simpan Semua ke Library** dari mode *sticky relative* menjadi *fixed bottom-right* (`fixed bottom-6 right-8`). Kini tombol tersebut benar-benar melayang statis di sudut kanan bawah layar sehingga tidak perlu melakukan *scroll* panjang ke bawah lagi saat item *batch scan* sangat banyak.
+- File:
+  - `app/Http/Requests/ScanBookImagesRequest.php`
+  - `resources/views/books/import.blade.php`
+  - `docs/change_log.md`
+- Dampak:
+  - Layout form review hasil scan jauh lebih padat dan tidak membuang ruang di bawah gambar cover.
+  - Fotografi modern dari ponsel kini terbaca sempurna tanpa menyebabkan error format.
+  - UX operator lebih responsif karena bisa memanggil ulang API metadata (`enrich`) per buku yang datanya kurang sempurna, dan aksi simpan sangat mudah dijangkau kapan saja secara *floating*.
+
 ## 2026-04-07
 
 ### Rack Capacity UX Fix - Multi-Book Slot (Available Until Full)
