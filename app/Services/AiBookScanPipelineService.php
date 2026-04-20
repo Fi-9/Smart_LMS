@@ -206,6 +206,27 @@ class AiBookScanPipelineService
         ];
     }
 
+    public function enrichMetadata(string $title, ?string $author, ?string $isbn = null): array
+    {
+        $lookupTitleCandidates = $this->buildLookupTitleCandidates($title);
+        
+        $primary = $this->seedMetadataFromVision($title, $author, null, null, $isbn, null);
+        $fieldSources = $this->seedFieldSources($title, $author, null, null, $isbn, null);
+
+        $enriched = $this->enrichMissingMetadataFromProviders($primary, $fieldSources, $isbn, $title, $author, $lookupTitleCandidates);
+
+        $metadata = $enriched['metadata'];
+        
+        $metadata['category'] = $this->localizeCategoryToIndonesian($this->clean($metadata['category'] ?? null));
+        $metadata['description'] = $this->localizeDescriptionToIndonesian($this->clean($metadata['description'] ?? null));
+        
+        return [
+            'metadata' => $metadata,
+            'source' => $enriched['source'],
+            'field_sources' => $enriched['field_sources'],
+        ];
+    }
+
     private function seedFieldSources(
         ?string $title,
         ?string $author,
@@ -256,6 +277,20 @@ class AiBookScanPipelineService
                 $merged = $this->mergeMissingFields($merged, $openLibrary);
                 $fieldSources = $this->applyProviderFieldSources($fieldSources, $merged, $openLibrary);
                 $source = $this->preferCatalogSource($source, $merged, $openLibrary);
+            }
+        }
+
+        if ($this->clean($merged['description'] ?? null) === null) {
+            $web = $this->resolveTrustedWebDescription($lookupTitleCandidates, $author);
+            if (is_array($web)) {
+                $merged = $this->mergeMissingFields($merged, $web);
+                $fieldSources = $this->applyProviderFieldSources($fieldSources, $merged, $web);
+                $source = $this->preferCatalogSource($source, $merged, $web);
+
+                if ($this->clean($web['description'] ?? null) !== null) {
+                    $merged['source'] = $this->clean($web['source'] ?? null) ?? $merged['source'] ?? $source;
+                    $merged['source_url'] = $this->clean($web['source_url'] ?? null) ?? $merged['source_url'] ?? null;
+                }
             }
         }
 
@@ -478,7 +513,9 @@ class AiBookScanPipelineService
         }
 
         if ($this->clean($secondary['description'] ?? null) !== null && ! isset($fieldSources['description'])) {
-            $fieldSources['description'] = $provider;
+            $fieldSources['description'] = strtolower((string) ($secondary['source'] ?? '')) === 'websearch'
+                ? $this->normalizeDescriptionSourceLabel($secondary['source_url'] ?? null)
+                : $provider;
         }
 
         return $fieldSources;

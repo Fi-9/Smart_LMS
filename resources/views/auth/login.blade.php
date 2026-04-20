@@ -93,7 +93,7 @@
                             </div>
                         @endif
 
-                        <form method="POST" action="{{ route('login.store') }}" class="space-y-5">
+                        <form method="POST" action="{{ route('login.store') }}" class="space-y-5" onsubmit="if(this.dataset.submitting) return false; this.dataset.submitting = 'true'; this.querySelector('.login-button').disabled=true; this.querySelector('.login-button').classList.add('opacity-75', 'cursor-not-allowed');">
                             @csrf
 
                             <div>

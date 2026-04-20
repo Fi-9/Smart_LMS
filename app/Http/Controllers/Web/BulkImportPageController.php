@@ -128,6 +128,23 @@ class BulkImportPageController extends Controller
         return response()->json($result);
     }
 
+    public function enrichMetadata(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string',
+            'author' => 'nullable|string',
+            'isbn' => 'nullable|string',
+        ]);
+
+        $result = $this->aiBookScanPipelineService->enrichMetadata(
+            $validated['title'],
+            $validated['author'] ?? null,
+            $validated['isbn'] ?? null
+        );
+
+        return response()->json($result);
+    }
+
     public function scanWithAi(ScanBookImagesRequest $request): JsonResponse
     {
         $runtimeIssue = $this->aiInfrastructureService->ensureVisionRuntimeAvailable();
@@ -197,14 +214,29 @@ class BulkImportPageController extends Controller
         }
 
         $mode = (string) $request->validated('mode', 'full');
-        $batch = $request->validated('books');
+        $batch = $request->validated('books', []);
         $draftBooks = [];
 
         foreach ($batch as $index => $bookPayload) {
-            $images = array_values(array_filter([
-                $request->file("books.{$index}.front_image"),
-                $request->file("books.{$index}.back_image"),
-            ]));
+            $frontFile = $request->file("books.{$index}.front_image");
+            $backFile = $request->file("books.{$index}.back_image");
+
+            $validImages = [];
+            foreach ([$frontFile, $backFile] as $file) {
+                if ($file && $file->isValid()) {
+                    $ext = strtolower((string) $file->extension());
+                    $mime = strtolower((string) $file->getMimeType());
+                    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'avif', 'heic', 'heif', 'bmp']) || Str::startsWith($mime, 'image/')) {
+                        $validImages[] = $file;
+                    }
+                }
+            }
+
+            if (empty($validImages)) {
+                continue;
+            }
+
+            $images = $validImages;
 
             $scanId = (string) Str::uuid();
             $storedImagePaths = [];

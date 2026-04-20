@@ -15,9 +15,9 @@ class ScanBookBatchRequest extends FormRequest
     {
         return [
             'mode' => ['nullable', 'string', 'in:simple,full'],
-            'books' => ['required', 'array', 'min:1', 'max:30'],
-            'books.*.front_image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
-            'books.*.back_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'books' => ['required', 'array', 'min:1', 'max:50'],
+            'books.*.front_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,avif,heic,heif,bmp', 'max:10240'],
+            'books.*.back_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,avif,heic,heif,bmp', 'max:10240'],
             'books.*.notes' => ['nullable', 'string', 'max:255'],
         ];
     }

@@ -358,7 +358,7 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->times(3)
+            ->times(2)
             ->with('KEEP GOING', 'AUSTIN KLEON')
             ->andReturn([
                 'title' => 'Keep Going',

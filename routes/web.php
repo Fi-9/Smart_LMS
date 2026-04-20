@@ -31,6 +31,7 @@ Route::middleware(['auth', 'role:admin,staff'])->group(function () {
     Route::post('/books/import/manual', [BulkImportPageController::class, 'storeManual'])->name('books.import.manual');
     Route::post('/books/import/isbn-lookup', [BulkImportPageController::class, 'lookupIsbn'])->name('books.import.isbn-lookup');
     Route::post('/books/import/ai-scan', [BulkImportPageController::class, 'scanWithAi'])->name('books.import.ai-scan');
+    Route::post('/books/import/enrich', [BulkImportPageController::class, 'enrichMetadata'])->name('books.import.enrich');
     Route::post('/books/import/ai-batch-scan', [BulkImportPageController::class, 'scanBatchWithAi'])->name('books.import.ai-batch-scan');
     Route::get('/books/import/ai-batch-status/{token}', [BulkImportPageController::class, 'batchScanStatus'])->name('books.import.ai-batch-status');
     Route::post('/books/import/ai-batch-cancel/{token}', [BulkImportPageController::class, 'cancelBatchScan'])->name('books.import.ai-batch-cancel');
