@@ -123,6 +123,12 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        'ai_scan' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/ai_scan_debug.log'),
+            'level' => 'debug',
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

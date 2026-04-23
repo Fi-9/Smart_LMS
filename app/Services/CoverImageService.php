@@ -44,6 +44,12 @@ class CoverImageService
         }
 
         $src = @imagecreatefromstring($raw);
+        if (! $src && function_exists('imagecreatefromavif')) {
+            $src = @imagecreatefromavif($sourceAbsPath);
+        }
+        if (! $src && function_exists('imagecreatefromwebp')) {
+            $src = @imagecreatefromwebp($sourceAbsPath);
+        }
         if (! $src) {
             return null;
         }
@@ -128,6 +134,15 @@ class CoverImageService
             $w = (int) floor($coverBox['w'] * $imgW);
             $h = (int) floor($coverBox['h'] * $imgH);
 
+            // Add 5% padding
+            $paddingW = (int) floor($w * 0.05);
+            $paddingH = (int) floor($h * 0.05);
+
+            $x -= $paddingW;
+            $y -= $paddingH;
+            $w += $paddingW * 2;
+            $h += $paddingH * 2;
+
             $x = max(0, min($imgW - 1, $x));
             $y = max(0, min($imgH - 1, $y));
             $w = max(1, min($imgW - $x, $w));
@@ -193,8 +208,15 @@ class CoverImageService
 
     private function resizeToCoverStandard(\GdImage $source): ?\GdImage
     {
-        $targetWidth = max(120, (int) config('services.ai_scan.cover_width', 600));
-        $targetHeight = max(180, (int) config('services.ai_scan.cover_height', 900));
+        $srcW = imagesx($source);
+        $srcH = imagesy($source);
+
+        $maxWidth = max(120, (int) config('services.ai_scan.cover_width', 600));
+        $maxHeight = max(180, (int) config('services.ai_scan.cover_height', 900));
+
+        $ratio = min($maxWidth / max(1, $srcW), $maxHeight / max(1, $srcH));
+        $targetWidth = max(1, (int) round($srcW * $ratio));
+        $targetHeight = max(1, (int) round($srcH * $ratio));
 
         $dest = imagecreatetruecolor($targetWidth, $targetHeight);
         if (! $dest) {
@@ -213,8 +235,8 @@ class CoverImageService
             0,
             $targetWidth,
             $targetHeight,
-            imagesx($source),
-            imagesy($source)
+            $srcW,
+            $srcH
         );
 
         if (! $ok) {

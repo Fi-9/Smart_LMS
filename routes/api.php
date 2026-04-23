@@ -9,7 +9,7 @@ use App\Http\Controllers\Api\IsbnLookupController;
 use App\Http\Controllers\Api\RackController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'role:admin,staff'])->group(function () {
+Route::middleware(['auth', 'role:admin,staff'])->name('api.')->group(function () {
     Route::post('/isbn/lookup', IsbnLookupController::class);
     Route::post('/ai/books/scan', AiBookScanController::class);
     Route::get('/dashboard/stats', DashboardController::class);

@@ -21,7 +21,14 @@ class AiBookScanPipelineService
      */
     public function scan(array $images, string $mode = 'full'): array
     {
+        $pipelineStart = microtime(true);
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("=== START AI SCAN ===");
+
+        $visionStart = microtime(true);
         $vision = $this->ollamaService->extractBookSignals($images);
+        $visionMs = round((microtime(true) - $visionStart) * 1000);
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("⏱️ Vision selesai dalam {$visionMs}ms");
+
         $best = is_array($vision['best'] ?? null) ? $vision['best'] : [];
         $imageSignals = is_array($vision['images'] ?? null) ? $vision['images'] : [];
         $mode = $mode === 'simple' ? 'simple' : 'full';
@@ -32,6 +39,10 @@ class AiBookScanPipelineService
         $category = $this->clean($best['category'] ?? null);
         $descriptionFromVision = $this->clean($best['description'] ?? null);
         $publisherFromVision = $this->clean($best['publisher'] ?? null);
+
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Vision dapet judul: " . ($title ?? 'Tidak ditemukan'));
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Vision dapet penulis: " . ($author ?? 'Tidak ditemukan'));
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Vision dapet ISBN: " . ($isbn ?? 'Tidak ditemukan'));
 
         $source = 'ai';
         $metadata = $this->seedMetadataFromVision(
@@ -46,6 +57,7 @@ class AiBookScanPipelineService
         $lookupTitleCandidates = $this->buildLookupTitleCandidates($title);
 
         if ($mode === 'full') {
+            $providerStart = microtime(true);
             $providerMetadata = $this->resolvePrimaryProviderMetadata($isbn, $lookupTitleCandidates, $title, $author);
 
             if ($providerMetadata) {
@@ -103,9 +115,12 @@ class AiBookScanPipelineService
                     $source = $this->clean($metadata['source'] ?? null) ?? $source;
                 }
             }
+            $providerMs = round((microtime(true) - $providerStart) * 1000);
+            \Illuminate\Support\Facades\Log::channel('ai_scan')->info("⏱️ Provider lookup selesai dalam {$providerMs}ms");
 
             $hasVisionDescription = $this->clean($metadata['description'] ?? null) !== null;
             if (! $hasVisionDescription) {
+                $webStart = microtime(true);
                 $searchTitleCandidates = $this->buildSearchTitleCandidates(
                     $this->clean($metadata['title'] ?? null),
                     $lookupTitleCandidates
@@ -124,9 +139,14 @@ class AiBookScanPipelineService
                         $source = 'websearch';
                     }
                 }
+                $webMs = round((microtime(true) - $webStart) * 1000);
+                \Illuminate\Support\Facades\Log::channel('ai_scan')->info("⏱️ Websearch selesai dalam {$webMs}ms");
             }
 
         }
+
+        $totalMs = round((microtime(true) - $pipelineStart) * 1000);
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("⏱️ TOTAL PIPELINE: {$totalMs}ms ({$mode} mode)");
 
         $frontImageIndex = $this->resolveFrontImageIndex($imageSignals, $best['front_image_index'] ?? null);
         $storedImages = $this->storeUploads($images);
@@ -137,9 +157,7 @@ class AiBookScanPipelineService
             ? collect($imageSignals)->first(fn ($signal) => (int) ($signal['index'] ?? -1) === $frontImageIndex)
             : null;
         $frontCoverBox = is_array($frontCoverSignal) ? ($frontCoverSignal['cover_box'] ?? null) : null;
-        $frontCoverCropped = $frontCoverOriginal
-            ? $this->coverImageService->cropFrontCover($frontCoverOriginal, is_array($frontCoverBox) ? $frontCoverBox : null)
-            : null;
+        $frontCoverCropped = null; // Disable AI cropping, force using the normalized full image
         $frontCoverNormalized = (! $frontCoverCropped && $frontCoverOriginal)
             ? $this->coverImageService->normalizeCoverFromUpload($frontCoverOriginal)
             : null;
@@ -305,10 +323,18 @@ class AiBookScanPipelineService
     {
         $google = $this->resolveGoogleMetadata($isbn, $lookupTitleCandidates, $aiTitle, $aiAuthor);
         if ($google) {
+            \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Google Books nemu ISBN: " . ($google['isbn'] ?? 'Tidak ditemukan') . " | Judul: " . ($google['title'] ?? '-'));
             return $google;
         }
 
-        return $this->resolveOpenLibraryMetadata($isbn, $lookupTitleCandidates, $aiTitle, $aiAuthor);
+        $ol = $this->resolveOpenLibraryMetadata($isbn, $lookupTitleCandidates, $aiTitle, $aiAuthor);
+        if ($ol) {
+            \Illuminate\Support\Facades\Log::channel('ai_scan')->info("OpenLibrary nemu ISBN: " . ($ol['isbn'] ?? 'Tidak ditemukan') . " | Judul: " . ($ol['title'] ?? '-'));
+            return $ol;
+        }
+
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Provider API tidak menemukan hasil.");
+        return null;
     }
 
     private function resolveGoogleMetadata(?string $isbn, array $lookupTitleCandidates, ?string $aiTitle, ?string $aiAuthor): ?array
@@ -401,7 +427,76 @@ class AiBookScanPipelineService
             }
         }
 
+        // Partial title search: first 2-3 significant words (for fuzzy matching)
+        $significantTokens = array_values(array_filter($tokens, fn ($t) => ! in_array($t, $stopwords, true) && mb_strlen($t) >= 3));
+        if (count($significantTokens) >= 2) {
+            $partial = implode(' ', array_slice($significantTokens, 0, min(3, count($significantTokens))));
+            if (! $this->titleVariantExists($variants, $partial)) {
+                $variants[] = $partial;
+            }
+        }
+
+        // OCR typo correction: common character substitution pairs
+        $ocrFixes = $this->generateOcrCorrectionVariants($normalized);
+        foreach ($ocrFixes as $fix) {
+            if (! $this->titleVariantExists($variants, $fix)) {
+                $variants[] = $fix;
+            }
+        }
+
         return array_values(array_filter($variants, fn (mixed $value): bool => is_string($value) && trim($value) !== ''));
+    }
+
+    /**
+     * Generate title variants by swapping commonly confused OCR characters.
+     * E.g. "BATT" could be "BAIT", "BATI", etc.
+     *
+     * @return array<int, string>
+     */
+    private function generateOcrCorrectionVariants(string $title): array
+    {
+        // Common OCR confusion pairs (case-insensitive swaps applied to whole title)
+        $swapPairs = [
+            ['T', 'I'],  // BATT → BAIT, BATI
+            ['T', 'L'],  // TL confusion
+            ['B', 'R'],  // B/R confusion
+            ['O', 'Q'],  // O/Q confusion
+            ['O', '0'],  // O/zero
+            ['l', '1'],  // l/one
+            ['S', '5'],  // S/5
+            ['rn', 'm'], // rn often read as m
+        ];
+
+        $variants = [];
+        $upper = strtoupper($title);
+
+        foreach ($swapPairs as [$a, $b]) {
+            $upperA = strtoupper($a);
+            $upperB = strtoupper($b);
+
+            if (stripos($upper, $upperA) !== false) {
+                // Try replacing each occurrence individually (not all at once)
+                $positions = [];
+                $offset = 0;
+                while (($pos = stripos($upper, $upperA, $offset)) !== false) {
+                    $positions[] = $pos;
+                    $offset = $pos + strlen($upperA);
+                }
+
+                foreach ($positions as $pos) {
+                    $variant = substr_replace($title, $b, $pos, strlen($a));
+                    $variant = trim($variant);
+                    if ($variant !== '' && $variant !== $title) {
+                        $variants[] = $variant;
+                    }
+                    if (count($variants) >= 5) {
+                        break 2; // Limit to avoid explosion
+                    }
+                }
+            }
+        }
+
+        return $variants;
     }
 
     /**
@@ -433,6 +528,7 @@ class AiBookScanPipelineService
             );
 
             if (is_array($official) && $this->clean($official['description'] ?? null) !== null) {
+                \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Tavily dapet deskripsi dari: " . ($official['source_url'] ?? 'Web Resmi'));
                 return $official;
             }
         }
@@ -440,10 +536,12 @@ class AiBookScanPipelineService
         foreach ($titleCandidates as $title) {
             $resolved = $this->webBookDescriptionService->resolve($title, $author);
             if (is_array($resolved) && $this->clean($resolved['description'] ?? null) !== null) {
+                \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Tavily dapet deskripsi dari: " . ($resolved['source_url'] ?? 'Web Terpercaya'));
                 return $resolved;
             }
         }
 
+        \Illuminate\Support\Facades\Log::channel('ai_scan')->info("Tavily gagal mendapatkan deskripsi dari web.");
         return null;
     }
 

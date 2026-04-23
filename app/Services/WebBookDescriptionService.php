@@ -40,14 +40,83 @@ class WebBookDescriptionService
         }
 
         $maxResults = max(1, min(5, $this->settingsService->getInt('ai.websearch.max_results', (int) config('services.websearch.max_results', 3))));
-        $query = $cleanTitle . ($cleanAuthor ? ' ' . $cleanAuthor : '') . ' sinopsis penerbit resmi';
+        // Paksa keyword untuk mencari buku agar tidak tercampur lagu/puisi
+        $query = 'Buku ' . $cleanTitle . ($cleanAuthor ? ' ' . $cleanAuthor : '') . ' Gramedia';
         if (is_array($domains) && $domains !== []) {
             $siteParts = array_map(fn (string $d): string => 'site:' . trim($d), $domains);
             $query .= ' ' . implode(' OR ', $siteParts);
         }
+        
+        return $this->executeWebSearchAndExtract(
+            $query, 
+            $maxResults, 
+            $domains, 
+            $cacheKey, 
+            fn(array $contexts) => $this->ollamaService->extractBookDescriptionFromWeb($cleanTitle, $cleanAuthor, $contexts),
+            function(array $extracted) use ($cleanTitle) {
+                $description = $this->clean($extracted['description'] ?? null);
+                if (! $description) {
+                    return null;
+                }
+                return ['description' => $description];
+            },
+            $cleanTitle
+        );
+    }
+
+    public function resolveByIsbn(string $isbn): ?array
+    {
+        $cleanIsbn = preg_replace('/[^0-9Xx]/', '', trim($isbn));
+        if (! $this->isEnabled() || ! $cleanIsbn) {
+            return null;
+        }
+
+        $cacheKey = 'book_lookup:websearch_isbn:' . $cleanIsbn;
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && array_key_exists('hit', $cached)) {
+            return ($cached['hit'] ?? false) ? ($cached['data'] ?? null) : null;
+        }
+
+        $maxResults = max(1, min(5, $this->settingsService->getInt('ai.websearch.max_results', (int) config('services.websearch.max_results', 3))));
+        $query = 'Buku ISBN ' . $cleanIsbn . ' Gramedia';
+        
+        return $this->executeWebSearchAndExtract(
+            $query,
+            $maxResults,
+            null,
+            $cacheKey,
+            fn(array $contexts) => $this->ollamaService->extractBookInfoFromWebByIsbn($cleanIsbn, $contexts),
+            function(array $extracted) {
+                $title = $this->clean($extracted['title'] ?? null);
+                if (! $title) {
+                    return null;
+                }
+                return [
+                    'title' => $title,
+                    'author' => $this->clean($extracted['author'] ?? null),
+                    'description' => $this->clean($extracted['description'] ?? null),
+                    'publisher' => $this->clean($extracted['publisher'] ?? null),
+                    'category' => $this->clean($extracted['category'] ?? null),
+                    'isbn' => $extracted['isbn'] ?? null,
+                ];
+            },
+            $cleanIsbn
+        );
+    }
+
+    /**
+     * @param array<int, string>|null $domains
+     */
+    private function executeWebSearchAndExtract(
+        string $query, 
+        int $maxResults, 
+        ?array $domains, 
+        string $cacheKey, 
+        \Closure $extractClosure, 
+        \Closure $mapClosure,
+        string $logIdentifier
+    ): ?array {
         Log::info('websearch.started', [
-            'title' => $cleanTitle,
-            'author' => $cleanAuthor,
             'query' => $query,
             'max_results' => $maxResults,
             'domains' => $domains,
@@ -55,11 +124,10 @@ class WebBookDescriptionService
 
         $results = $this->searchService->search($query, $maxResults * 2);
         $filtered = $this->filterAllowedDomains($results, $domains);
-        $filtered = $this->filterRelevantByTitle($filtered, $cleanTitle);
+        // We skip strict title filtering if it's an ISBN search, but we keep it basic
         $selected = array_slice($filtered, 0, $maxResults);
 
         Log::info('websearch.filtered', [
-            'title' => $cleanTitle,
             'raw_count' => count($results),
             'filtered_count' => count($filtered),
             'selected_count' => count($selected),
@@ -67,7 +135,7 @@ class WebBookDescriptionService
 
         if ($selected === []) {
             $this->cacheResult($cacheKey, null);
-            Log::info('websearch.rejected', ['reason' => 'no_allowed_results', 'title' => $cleanTitle]);
+            Log::info('websearch.rejected', ['reason' => 'no_allowed_results', 'identifier' => $logIdentifier]);
             return null;
         }
 
@@ -83,45 +151,39 @@ class WebBookDescriptionService
         }
 
         try {
-            $extracted = $this->ollamaService->extractBookDescriptionFromWeb(
-                $cleanTitle,
-                $cleanAuthor,
-                $contexts
-            );
+            $extracted = $extractClosure($contexts);
         } catch (\RuntimeException $e) {
-            Log::warning('websearch.description.ollama_failed', ['error' => $e->getMessage()]);
+            Log::warning('websearch.extraction.ollama_failed', ['error' => $e->getMessage()]);
             $extracted = null;
         }
 
-        $description = is_array($extracted) ? $this->clean($extracted['description'] ?? null) : null;
-        $sourceUrl = is_array($extracted) ? $this->clean($extracted['source_url'] ?? null) : null;
         $confidence = is_array($extracted) && is_numeric($extracted['confidence'] ?? null)
             ? (float) $extracted['confidence']
             : 0.0;
 
-        if (! $description || $confidence < 0.7) {
+        $mapped = is_array($extracted) ? $mapClosure($extracted) : null;
+
+        if (! $mapped || $confidence < 0.7) {
             $this->cacheResult($cacheKey, null);
             Log::info('websearch.rejected', [
-                'reason' => ! $description ? 'empty_description' : 'low_confidence',
-                'title' => $cleanTitle,
+                'reason' => ! $mapped ? 'missing_required_fields' : 'low_confidence',
+                'identifier' => $logIdentifier,
                 'confidence' => $confidence,
             ]);
             return null;
         }
 
-        $resolved = [
-            'description' => $description,
-            'source_url' => $sourceUrl,
+        $resolved = array_merge($mapped, [
+            'source_url' => is_array($extracted) ? $this->clean($extracted['source_url'] ?? null) : null,
             'source' => 'websearch',
             'confidence' => $confidence,
-        ];
+        ]);
 
         $this->cacheResult($cacheKey, $resolved);
 
-        Log::info('websearch.description.accepted', [
-            'title' => $cleanTitle,
-            'author' => $cleanAuthor,
-            'source_url' => $sourceUrl,
+        Log::info('websearch.accepted', [
+            'identifier' => $logIdentifier,
+            'source_url' => $resolved['source_url'],
             'confidence' => $confidence,
             'domains' => $domains,
         ]);
