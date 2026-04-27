@@ -42,11 +42,11 @@ return [
     ],
 
     'ollama' => [
-        'base_url' => env('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
-        'model' => env('OLLAMA_MODEL', 'gemma4:26b'),
-        'vision_model' => env('OLLAMA_VISION_MODEL', env('OLLAMA_MODEL', 'gemma4:26b')),
-        'text_model' => env('OLLAMA_TEXT_MODEL', env('OLLAMA_MODEL', 'gemma4:26b')),
-        'web_model' => env('OLLAMA_WEB_MODEL', env('OLLAMA_TEXT_MODEL', env('OLLAMA_MODEL', 'gemma4:26b'))),
+        'base_url' => env('OLLAMA_BASE_URL', 'http://192.168.100.200:11434'),
+        'model' => env('OLLAMA_MODEL', 'qwen2.5:32b'),
+        'vision_model' => env('OLLAMA_VISION_MODEL', env('OLLAMA_MODEL', 'pixtral')),
+        'text_model' => env('OLLAMA_TEXT_MODEL', env('OLLAMA_MODEL', 'qwen2.5:32b')),
+        'web_model' => env('OLLAMA_WEB_MODEL', env('OLLAMA_TEXT_MODEL', env('OLLAMA_MODEL', 'llama3.1:latest'))),
         'timeout' => (int) env('OLLAMA_TIMEOUT', 240),
         'connect_timeout' => (int) env('OLLAMA_CONNECT_TIMEOUT', 10),
     ],

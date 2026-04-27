@@ -1,4 +1,11 @@
 <?php return array (
+  'laravel/ai' => 
+  array (
+    'providers' => 
+    array (
+      0 => 'Laravel\\Ai\\AiServiceProvider',
+    ),
+  ),
   'laravel/pail' => 
   array (
     'providers' => 
@@ -39,6 +46,17 @@
     'providers' => 
     array (
       0 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    ),
+  ),
+  'prism-php/prism' => 
+  array (
+    'aliases' => 
+    array (
+      'PrismServer' => 'Prism\\Prism\\Facades\\PrismServer',
+    ),
+    'providers' => 
+    array (
+      0 => 'Prism\\Prism\\PrismServiceProvider',
     ),
   ),
   'simplesoftwareio/simple-qrcode' => 

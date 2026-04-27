@@ -36,8 +36,9 @@ class BorrowingController extends Controller
         try {
             $borrowing = $this->borrowingService->borrowBook(
                 bookId: $request->integer('book_id'),
-                borrowerName: $request->string('borrower_name')->toString(),
+                borrowerName: $request->string('borrower_name')->toString() ?: null,
                 dueDate: $request->string('due_date')->toString(),
+                memberId: $request->filled('member_id') ? $request->integer('member_id') : null,
             );
 
             return response()->json([

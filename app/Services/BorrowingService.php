@@ -16,11 +16,12 @@ class BorrowingService
     public function paginate(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
         return Borrowing::query()
-            ->with(['book:id,title,author,rack_id,position_code', 'book.rack:id,name'])
+            ->with(['book:id,title,author,rack_id,position_code', 'book.rack:id,name', 'member:id,nis,name,class'])
             ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($filters['search'] ?? null, function ($q, $search) {
                 $q->where(function ($sub) use ($search) {
                     $sub->where('borrower_name', 'like', "%{$search}%")
+                        ->orWhereHas('member', fn ($mq) => $mq->where('name', 'like', "%{$search}%")->orWhere('nis', 'like', "%{$search}%"))
                         ->orWhereHas('book', fn ($bq) => $bq->where('title', 'like', "%{$search}%"));
                 });
             })
@@ -29,9 +30,9 @@ class BorrowingService
             ->withQueryString();
     }
 
-    public function borrowBook(int $bookId, string $borrowerName, string $dueDate, string $createdBy = 'admin'): Borrowing
+    public function borrowBook(int $bookId, ?string $borrowerName, string $dueDate, ?int $memberId = null, string $createdBy = 'admin'): Borrowing
     {
-        return DB::transaction(function () use ($bookId, $borrowerName, $dueDate, $createdBy) {
+        return DB::transaction(function () use ($bookId, $borrowerName, $dueDate, $memberId, $createdBy) {
             $book = Book::query()->findOrFail($bookId);
 
             if ($book->isBorrowed()) {
@@ -42,7 +43,8 @@ class BorrowingService
 
             $borrowing = Borrowing::query()->create([
                 'book_id' => $bookId,
-                'borrower_name' => $borrowerName,
+                'member_id' => $memberId,
+                'borrower_name' => $borrowerName ?? '',
                 'borrowed_at' => Carbon::now(),
                 'due_date' => Carbon::parse($dueDate)->endOfDay(),
                 'status' => BorrowingStatus::BORROWED->value,

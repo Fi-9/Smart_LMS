@@ -29,6 +29,7 @@ class UpdateAiSettingsRequest extends FormRequest
             'websearch_max_results' => ['required', 'integer', 'min:1', 'max:10'],
             'websearch_allowed_domains' => ['nullable', 'string', 'max:2000'],
             'scan_default_mode' => ['required', Rule::in(['simple', 'full'])],
+            'school_logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg', 'max:2048'],
         ];
     }
 }

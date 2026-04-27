@@ -2,6 +2,7 @@ import defaultTheme from 'tailwindcss/defaultTheme';
 
 /** @type {import('tailwindcss').Config} */
 export default {
+    darkMode: 'class',
     content: [
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',
@@ -29,12 +30,22 @@ export default {
                     900: '#13260F',
                     soft: '#B7D9B1',
                 },
-                background: '#F7FAF6',
-                surface: '#FFFFFF',
-                border: '#E5E7EB',
                 success: '#4B8B3B',
                 warning: '#EAB308',
                 danger: '#DC2626',
+                /* Semantic tokens via CSS variables */
+                foreground: 'rgb(var(--app-foreground) / <alpha-value>)',
+                muted: 'rgb(var(--app-muted) / <alpha-value>)',
+                border: 'rgb(var(--app-border) / <alpha-value>)',
+                'border-strong': 'rgb(var(--app-border-strong) / <alpha-value>)',
+                surface: 'rgb(var(--app-surface) / <alpha-value>)',
+                background: 'rgb(var(--app-background) / <alpha-value>)',
+                /* Sidebar tokens */
+                sidebar: 'rgb(var(--sidebar-bg) / <alpha-value>)',
+                'sidebar-foreground': 'rgb(var(--sidebar-foreground) / <alpha-value>)',
+                'sidebar-muted': 'rgb(var(--sidebar-muted) / <alpha-value>)',
+                'sidebar-border': 'rgb(var(--sidebar-border) / <alpha-value>)',
+                'sidebar-hover': 'rgb(var(--sidebar-hover) / <alpha-value>)',
             },
         },
     },

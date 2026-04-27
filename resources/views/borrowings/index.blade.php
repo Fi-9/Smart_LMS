@@ -68,7 +68,15 @@
                                     <p class="font-semibold text-gray-900">{{ $borrowing->book->title }}</p>
                                     <p class="text-xs text-gray-500">{{ $borrowing->book->author }}</p>
                                 </td>
-                                <td class="p-3 font-medium text-gray-800">{{ $borrowing->borrower_name }}</td>
+                                <td class="p-3">
+                                    @if($borrowing->member)
+                                        <a href="{{ route('members.show', $borrowing->member) }}" class="font-medium text-primary-700 hover:underline">{{ $borrowing->borrower_display }}</a>
+                                        <p class="text-xs text-gray-500">{{ $borrowing->member->nis }}</p>
+                                    @else
+                                        <span class="font-medium text-gray-800">{{ $borrowing->borrower_display }}</span>
+                                        <p class="text-xs text-amber-600">Unlinked</p>
+                                    @endif
+                                </td>
                                 <td class="p-3 text-gray-600">{{ $borrowing->borrowed_at->format('d M Y') }}</td>
                                 <td class="p-3">
                                     <span class="{{ $isLate ? 'font-semibold text-red-600' : 'text-gray-600' }}">

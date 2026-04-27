@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Log;
 
 class IsbnLookupService
 {
+    public function __construct(
+        private readonly WebBookDescriptionService $webDescriptionService
+    ) {
+    }
+
     public function lookupGoogleByIsbnOnly(string $isbn): ?array
     {
         $normalizedIsbn = $this->normalizeIsbn($isbn);
@@ -62,7 +67,7 @@ class IsbnLookupService
             'description' => $metadata['description'] ?? null,
             'publisher' => $metadata['publisher'] ?? null,
             'published_year' => $metadata['published_year'] ?? null,
-            'isbn' => $metadata['isbn'] ?? null,
+            'isbn' => $metadata['isbn'] ?? $isbn,
             'cover_url' => $metadata['cover_url'] ?? null,
             'source' => $metadata['source'] ?? null,
             'source_url' => $metadata['source_url'] ?? null,
@@ -104,11 +109,27 @@ class IsbnLookupService
             $google = $this->lookupGoogleByIsbn($normalizedIsbn);
             $openLibrary = $this->lookupOpenLibraryByIsbnInternal($normalizedIsbn);
 
+            $primary = null;
             if ($google) {
-                return $this->mergeMissingMetadataFields($google, $openLibrary);
+                $primary = $this->mergeMissingMetadataFields($google, $openLibrary);
+            } elseif ($openLibrary) {
+                $primary = $openLibrary;
             }
 
-            return $openLibrary;
+            if ($primary && $this->clean($primary['description'] ?? null) !== null) {
+                return $primary;
+            }
+
+            // Fallback to Tavily (Web Search) if both failed OR description is missing
+            $web = $this->webDescriptionService->resolveByIsbn($normalizedIsbn);
+            if ($web) {
+                if ($primary) {
+                    return $this->mergeMissingMetadataFields($primary, $web);
+                }
+                return $web;
+            }
+
+            return $primary;
         });
     }
 

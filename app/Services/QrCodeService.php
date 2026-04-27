@@ -33,23 +33,36 @@ class QrCodeService
 
     private function buildQrPayload(string $targetUrl): array
     {
+        $logoPath = app(\App\Services\AppSettingsService::class)->get('school_logo_path');
+        $absoluteLogoPath = $logoPath ? storage_path('app/public/' . $logoPath) : null;
+
         try {
+            $qr = QrCode::format('png')
+                ->size(300)
+                ->margin(1)
+                ->errorCorrection('H');
+                
+            if ($absoluteLogoPath && file_exists($absoluteLogoPath)) {
+                $qr = $qr->merge($absoluteLogoPath, 0.25, true);
+            }
+
             return [
-                'raw' => QrCode::format('png')
-                    ->size(300)
-                    ->margin(1)
-                    ->errorCorrection('H')
-                    ->generate($targetUrl),
+                'raw' => $qr->generate($targetUrl),
                 'mime' => 'image/png',
                 'extension' => 'png',
             ];
         } catch (Throwable) {
+            $qrSvg = QrCode::format('svg')
+                ->size(300)
+                ->margin(1)
+                ->errorCorrection('H');
+                
+            if ($absoluteLogoPath && file_exists($absoluteLogoPath)) {
+                $qrSvg = $qrSvg->merge($absoluteLogoPath, 0.25, true);
+            }
+
             return [
-                'raw' => QrCode::format('svg')
-                    ->size(300)
-                    ->margin(1)
-                    ->errorCorrection('H')
-                    ->generate($targetUrl),
+                'raw' => $qrSvg->generate($targetUrl),
                 'mime' => 'image/svg+xml',
                 'extension' => 'svg',
             ];

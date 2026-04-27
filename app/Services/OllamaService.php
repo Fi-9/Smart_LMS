@@ -60,7 +60,24 @@ class OllamaService
             ->values()
             ->all();
 
-        $best = is_array($decoded['best'] ?? null) ? $decoded['best'] : [];
+        // Fallback: If AI returned a flat object instead of nested schema
+        if (!isset($decoded['best']) && (isset($decoded['title']) || isset($decoded['isbn']))) {
+            $best = $decoded;
+            // Also pretend it's the first image
+            if (empty($normalizedImages)) {
+                $normalizedImages[] = [
+                    'index' => 0,
+                    'view' => 'front',
+                    'isbn' => $this->stringOrNull($decoded['isbn'] ?? null),
+                    'title' => $this->stringOrNull($decoded['title'] ?? null),
+                    'author' => $this->stringOrNull($decoded['author'] ?? null),
+                    'category' => $this->stringOrNull($decoded['category'] ?? null),
+                    'cover_box' => $this->normalizeCoverBox($decoded['cover_box'] ?? null),
+                ];
+            }
+        } else {
+            $best = is_array($decoded['best'] ?? null) ? $decoded['best'] : [];
+        }
 
         return [
             'images' => $normalizedImages,
@@ -95,7 +112,7 @@ class OllamaService
             'model' => $model,
             'stream' => false,
             'prompt' => $this->buildTranslatePrompt($content),
-            'keep_alive' => '20m',
+            'keep_alive' => '2h',
             'options' => [
                 'temperature' => 0,
                 'top_p' => 0.1,
@@ -169,13 +186,13 @@ class OllamaService
             'model' => $model,
             'stream' => false,
             'prompt' => $this->buildWebDescriptionPrompt($title, $author, $contexts),
-            'keep_alive' => '20m',
+            'keep_alive' => '2h',
             'format' => 'json',
             'options' => [
                 'temperature' => 0,
                 'top_p' => 0.1,
                 'seed' => 42,
-                'num_predict' => 512,
+                'num_predict' => 350,
             ],
         ];
 
@@ -209,30 +226,30 @@ class OllamaService
     }
 
     /**
-     * @param array<int, UploadedFile> $images
+     * @param array<int, array{url:string,title:string,snippet:?string,text:?string}> $contexts
      */
-    private function sendVisionRequest(array $images): string
+    public function extractBookInfoFromWebByIsbn(string $isbn, array $contexts): ?array
     {
+        if ($contexts === []) {
+            return null;
+        }
+
         $baseUrl = $this->resolveBaseUrl();
-        $model = $this->resolveModel('vision');
-        $timeout = $this->settingsService->getInt('ai.ollama.timeout', (int) config('services.ollama.timeout', 240));
+        $model = $this->resolveModel('web');
+        $timeout = max(30, $this->settingsService->getInt('ai.ollama.timeout', (int) config('services.ollama.timeout', 240)));
         $connectTimeout = $this->settingsService->getInt('ai.ollama.connect_timeout', (int) config('services.ollama.connect_timeout', 10));
 
         $payload = [
             'model' => $model,
             'stream' => false,
-            'prompt' => $this->buildVisionPrompt(),
-            'images' => array_map(
-                fn (UploadedFile $file) => $this->encodeVisionImage($file),
-                $images
-            ),
-            'keep_alive' => '20m',
+            'prompt' => $this->buildWebIsbnPrompt($isbn, $contexts),
+            'keep_alive' => '2h',
             'format' => 'json',
             'options' => [
                 'temperature' => 0,
                 'top_p' => 0.1,
                 'seed' => 42,
-                'num_predict' => 800,
+                'num_predict' => 450,
             ],
         ];
 
@@ -240,10 +257,106 @@ class OllamaService
             $response = Http::connectTimeout($connectTimeout)
                 ->timeout($timeout)
                 ->acceptJson()
-                ->retry(1, 400)
+                ->retry(1, 300)
                 ->post($baseUrl . '/api/generate', $payload)
                 ->throw();
         } catch (ConnectionException|RequestException $e) {
+            throw new RuntimeException(
+                sprintf('Ollama web extraction failed for model [%s] at [%s]: %s', $model, $baseUrl, $e->getMessage()),
+                0,
+                $e
+            );
+        }
+
+        $decoded = $this->decodeModelJson((string) $response->json('response', ''));
+        
+        $confidence = is_numeric($decoded['confidence'] ?? null)
+            ? (float) $decoded['confidence']
+            : 0.0;
+
+        if ($confidence < 0.6) {
+            return null;
+        }
+
+        return [
+            'title' => $this->stringOrNull($decoded['title'] ?? null),
+            'author' => $this->stringOrNull($decoded['author'] ?? null),
+            'description' => $this->stringOrNull($decoded['description'] ?? null),
+            'publisher' => $this->stringOrNull($decoded['publisher'] ?? null),
+            'category' => $this->stringOrNull($decoded['category'] ?? null),
+            'confidence' => max(0.0, min(1.0, $confidence)),
+            'source_url' => $this->stringOrNull($decoded['source_url'] ?? null),
+        ];
+    }
+
+    /**
+     * @param array<int, UploadedFile> $images
+     */
+    private function sendVisionRequest(array $images): string
+    {
+        $baseUrl = $this->resolveBaseUrl();
+        $model = $this->resolveModel('vision');
+        $timeout = max(120, $this->settingsService->getInt('ai.ollama.timeout', (int) config('services.ollama.timeout', 240)));
+        $connectTimeout = max(10, $this->settingsService->getInt('ai.ollama.connect_timeout', (int) config('services.ollama.connect_timeout', 10)));
+
+        $imageCount = count($images);
+        Log::channel('ai_scan')->info("Sending {$imageCount} image(s) to Vision model [{$model}]");
+
+        // NOTE: 'format' => 'json' is intentionally OMITTED.
+        // Qwen3-VL (and many VL models) return EMPTY responses when forced JSON
+        // mode is active. Instead, we instruct JSON output via prompt and use
+        // aggressive regex extraction in decodeModelJson().
+        //
+        // ROOT CAUSE (2026-04-22): eval_count=600 + response_length=0 means
+        // Qwen3-VL thinking mode consumed ALL 600 tokens in <think>...</think>
+        // before it could output any JSON. Fix: raise num_predict to 1200,
+        // num_ctx to 8192, and add 'think: false' to disable thinking mode.
+        $encodedImages = array_map(
+            fn (UploadedFile $file) => $this->encodeVisionImage($file),
+            $images
+        );
+
+        // Verification step: check that at least one image has non-empty payload
+        $nonEmptyImages = array_filter($encodedImages, fn (string $b64): bool => $b64 !== '');
+        if (count($nonEmptyImages) === 0) {
+            Log::channel('ai_scan')->error('❌ ALL images produced empty base64 payload! Aborting Vision request.');
+            throw new RuntimeException('All uploaded images produced empty payloads. Check image format support.');
+        }
+        if (count($nonEmptyImages) < $imageCount) {
+            Log::channel('ai_scan')->warning('⚠️ ' . ($imageCount - count($nonEmptyImages)) . ' image(s) produced empty payload and will be skipped.');
+        }
+
+        $totalPayloadKb = round(array_sum(array_map('strlen', $nonEmptyImages)) / 1024);
+        Log::channel('ai_scan')->info("📦 Total image payload: {$totalPayloadKb} KB for " . count($nonEmptyImages) . ' image(s)');
+
+        $payload = [
+            'model' => $model,
+            'stream' => false,
+            'prompt' => $this->buildVisionPrompt($imageCount),
+            'images' => array_values($nonEmptyImages),
+            'keep_alive' => '2h',
+            // 'think' => false disables Qwen3-VL internal reasoning/thinking mode.
+            // Without this, the model burns ALL num_predict tokens on <think> blocks
+            // and returns empty response (eval_count=600, response_length=0).
+            'think' => false,
+            'options' => [
+                'temperature' => 0,
+                'top_p' => 0.1,
+                'seed' => 42,
+                'num_predict' => 1200,
+                'num_ctx' => 8192,
+            ],
+        ];
+
+        try {
+            $response = Http::connectTimeout($connectTimeout)
+                ->timeout($timeout)
+                ->acceptJson()
+                ->retry(1, 500)
+                ->post($baseUrl . '/api/generate', $payload)
+                ->throw();
+        } catch (ConnectionException|RequestException $e) {
+            Log::channel('ai_scan')->error("Ollama Vision request FAILED: " . $e->getMessage());
             throw new RuntimeException(
                 sprintf('Ollama vision request failed for model [%s] at [%s]: %s', $model, $baseUrl, $e->getMessage()),
                 0,
@@ -251,29 +364,62 @@ class OllamaService
             );
         }
 
+        $responseBody = (string) $response->json('response', '');
+
+        $evalCount = (int) $response->json('eval_count', 0);
+        $promptEvalCount = (int) $response->json('prompt_eval_count', 0);
+        $durationSec = round(($response->json('total_duration', 0) / 1e9), 2);
+        $responseLen = strlen($responseBody);
+
         Log::debug('[OllamaService] Full vision API response keys', [
             'model' => $model,
             'done' => $response->json('done'),
-            'response_length' => strlen((string) $response->json('response', '')),
+            'response_length' => $responseLen,
             'total_duration' => $response->json('total_duration'),
-            'eval_count' => $response->json('eval_count'),
+            'eval_count' => $evalCount,
+            'prompt_eval_count' => $promptEvalCount,
         ]);
+        Log::channel('ai_scan')->info("Ollama responded in {$durationSec}s | eval_count: {$evalCount} | prompt_eval: {$promptEvalCount} | response_length: {$responseLen}");
 
-        return (string) $response->json('response', '');
+        // Diagnostic: if eval_count == num_predict AND response is empty,
+        // it almost certainly means the model ran out of tokens mid-think.
+        if ($responseLen === 0 && $evalCount > 0) {
+            Log::channel('ai_scan')->error("🚨 EMPTY RESPONSE DETECTED: eval_count={$evalCount}, prompt_eval={$promptEvalCount}. Likely causes: (1) thinking mode exhausted num_predict, (2) image payload rejected by model, (3) model VRAM overload.");
+        }
+
+        return $responseBody;
     }
 
     private function decodeModelJson(string $raw): array
     {
+        // Log full raw body for debugging model output issues
+        Log::channel('ai_scan')->info("Raw Vision Response: \n" . $raw);
+        Log::info('DEBUG OLLAMA RAW BODY', [
+            'length' => strlen($raw),
+            'body' => mb_substr($raw, 0, 3000),
+        ]);
         Log::debug('[OllamaService] Raw model response', [
             'length' => strlen($raw),
             'preview' => mb_substr($raw, 0, 500),
         ]);
+
+        // Strip Qwen3 <think>...</think> reasoning tags before parsing
+        $raw = preg_replace('/<think>.*?<\/think>/s', '', $raw) ?? $raw;
+        $raw = trim($raw);
+
+        if ($raw === '') {
+            Log::error('[OllamaService] Ollama returned empty response (possibly model too slow or num_predict too low)');
+            throw new RuntimeException('Ollama model returned an empty response. Try increasing num_predict or check model health.');
+        }
 
         $candidates = $this->buildJsonCandidates($raw);
 
         foreach ($candidates as $candidate) {
             $decoded = $this->decodeJsonCandidate($candidate);
             if (is_array($decoded)) {
+                Log::channel('ai_scan')->info('JSON decoded successfully from candidate', [
+                    'preview' => mb_substr($candidate, 0, 200),
+                ]);
                 return $decoded;
             }
         }
@@ -281,7 +427,9 @@ class OllamaService
         Log::error('[OllamaService] Failed to decode JSON from Ollama', [
             'raw_full' => mb_substr($raw, 0, 2000),
             'candidates_count' => count($candidates),
+            'candidates_preview' => array_map(fn($c) => mb_substr($c, 0, 300), $candidates),
         ]);
+        Log::channel('ai_scan')->error("❌ GAGAL PARSE JSON! Raw response (first 2000 chars): " . mb_substr($raw, 0, 2000));
 
         throw new RuntimeException('Invalid JSON returned by Ollama model.');
     }
@@ -292,18 +440,29 @@ class OllamaService
     private function buildJsonCandidates(string $raw): array
     {
         $content = trim($raw);
-        $content = preg_replace('/^```json\s*/i', '', $content) ?? $content;
-        $content = preg_replace('/^```\s*/', '', $content) ?? $content;
-        $content = preg_replace('/\s*```$/', '', $content) ?? $content;
+
+        // Aggressively strip Markdown code fences (Qwen3-VL often wraps JSON in these)
+        $content = str_replace(['```json', '```JSON', '```'], '', $content);
+        $content = preg_replace('/^```[a-zA-Z]*\s*/m', '', $content) ?? $content;
+        $content = trim($content);
+
+        // Replace smart quotes with standard quotes
         $content = str_replace(["\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}"], ['"', '"', "'", "'"], $content);
 
         $candidates = [$content];
 
+        // Try balanced brace extraction (handles leading/trailing text)
         $extracted = $this->extractFirstJsonObject($content);
         if ($extracted !== null) {
             $candidates[] = $extracted;
         }
 
+        // Greedy regex: grab everything between first { and last }
+        if (preg_match('/\{.*\}/s', $content, $matches)) {
+            $candidates[] = $matches[0];
+        }
+
+        // Try removing trailing commas
         $sanitized = preg_replace('/,\s*([}\]])/', '$1', $content);
         if (is_string($sanitized) && $sanitized !== $content) {
             $candidates[] = $sanitized;
@@ -387,43 +546,33 @@ class OllamaService
         return null;
     }
 
-    private function buildVisionPrompt(): string
+    private function buildVisionPrompt(int $imageCount = 1): string
     {
-        return <<<'PROMPT'
-Anda adalah sistem ekstraksi metadata buku dari gambar.
+        $dualImageInstructions = '';
+        if ($imageCount >= 2) {
+            $dualImageInstructions = '
+- Image 0 = Front Cover, Image 1 = Back Cover.
+- front_image_index = 0
+- Read synopsis/sinopsis text from Back Cover image for the "description" field.
+- If back cover has clear paragraph text, copy it as description.';
+        }
 
-Input dapat berisi 1 atau lebih gambar buku.
-Setiap gambar bisa berupa cover depan, belakang, punggung, atau tidak jelas.
+        return <<<PROMPT
+You are a book metadata extractor. Respond with ONLY a JSON object. No explanation. No markdown fences.
 
-Tugas:
-1) Untuk setiap gambar, tentukan:
-   - index: indeks gambar (0-based)
-   - view: "front" | "back" | "unknown"
-   - isbn: ISBN jika terlihat jelas, jika tidak null
-   - title: judul jika terlihat, jika tidak null
-   - author: penulis jika terlihat, jika tidak null
-   - publisher: penerbit jika terlihat, jika tidak null
-   - category: kategori/genre buku (contoh: Teknologi, Sejarah, Novel, Fiksi, Bisnis), jika tidak yakin null
-   - cover_box: koordinat area cover buku pada gambar dalam format normalisasi 0..1:
-     {"x": number, "y": number, "w": number, "h": number}
-     Jika tidak yakin atau bukan front cover, isi null.
-2) Tentukan objek "best":
-   - isbn: ISBN terbaik dari semua gambar (prioritas paling jelas), jika tidak ada null
-   - title: judul terbaik dari semua gambar, jika tidak ada null
-   - author: penulis terbaik dari semua gambar, jika tidak ada null
-   - publisher: penerbit terbaik dari semua gambar, jika tidak ada null
-   - language: bahasa buku jika terlihat jelas (contoh: Indonesia, English), jika tidak yakin null
-   - category: kategori/genre terbaik dari semua gambar, jika tidak ada null
-   - description: ringkasan singkat buku dalam Bahasa Indonesia berdasarkan teks yang benar-benar terlihat pada gambar (cover belakang/sinopsis). Jika tidak terlihat jelas, null.
-   - front_image_index: index gambar cover depan jika ada, jika tidak null
+Extract from the image(s):
+{"title":"...","author":"...","isbn":"...","category":"...","description":null,"publisher":"...","language":"...","front_image_index":0}
 
-Aturan ketat:
-- Jangan mengarang data.
-- Jangan menebak isi buku dari pengetahuan umum/model memory. Hanya pakai teks yang terlihat pada gambar.
-- Abaikan teks testimoni, kutipan pujian, badge promo, dan ornamen non-metadata.
-- Jika tidak yakin, isi null.
-- Jangan menambah field selain schema.
-- Output HARUS JSON valid murni, tanpa teks lain.
+Rules:
+- title = largest prominent text on front cover. DOUBLE CHECK every character for spelling accuracy!
+- author = person name on cover (below or above title). Verify spelling carefully.
+- isbn = 10 or 13 digit number near barcode, null if not visible
+- category: one of Fiksi/Novel/Sejarah/Teknologi/Bisnis/Sains/Agama/Pendidikan or null
+- description: synopsis text from back cover only, null if not visible
+- publisher: publisher name if visible, null otherwise
+- IMPORTANT: Read each letter carefully. Common OCR mistakes: I vs T, B vs R, A vs O. Double check!
+- If unsure about any field, use null. Do NOT invent data.
+- Ignore testimonials, badges, promo stickers.{$dualImageInstructions}
 PROMPT;
     }
 
@@ -471,20 +620,28 @@ PROMPT;
 
     private function normalizeCoverBox(mixed $box): ?array
     {
-        if (! is_array($box)) {
+        if (! is_array($box) || count($box) !== 4) {
             return null;
         }
 
-        foreach (['x', 'y', 'w', 'h'] as $key) {
-            if (! array_key_exists($key, $box) || ! is_numeric($box[$key])) {
-                return null;
-            }
+        // Expected: [ymin, xmin, ymax, xmax]
+        if (! is_numeric($box[0]) || ! is_numeric($box[1]) || ! is_numeric($box[2]) || ! is_numeric($box[3])) {
+            return null;
         }
 
-        $x = (float) $box['x'];
-        $y = (float) $box['y'];
-        $w = (float) $box['w'];
-        $h = (float) $box['h'];
+        $ymin = (float) $box[0];
+        $xmin = (float) $box[1];
+        $ymax = (float) $box[2];
+        $xmax = (float) $box[3];
+
+        if ($ymin >= $ymax || $xmin >= $xmax) {
+            return null;
+        }
+
+        $x = $xmin;
+        $y = $ymin;
+        $w = $xmax - $xmin;
+        $h = $ymax - $ymin;
 
         if ($w <= 0 || $h <= 0) {
             return null;
@@ -515,51 +672,120 @@ PROMPT;
     {
         $raw = @file_get_contents($file->getRealPath());
         if (! is_string($raw) || $raw === '') {
+            Log::warning('[OllamaService] Image file is empty or unreadable', [
+                'path' => $file->getRealPath(),
+                'original_name' => $file->getClientOriginalName(),
+            ]);
             return '';
         }
 
+        $originalName = $file->getClientOriginalName();
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $format = 'unknown';
+
+        Log::channel('ai_scan')->info("🖼️ Processing image: {$originalName} ({$extension}, " . round(strlen($raw)/1024, 1) . " KB)");
+
+        // Try standard decode first (works for JPEG, PNG, GIF, BMP)
+        // NOTE: imagecreatefromstring MAY also support AVIF on GD >= 2.3.0+libavif
         $image = @imagecreatefromstring($raw);
+        if ($image) {
+            $format = 'standard (imagecreatefromstring)';
+        }
+
+        // AVIF explicit fallback — force imagecreatefromavif when extension is .avif
+        // or when imagecreatefromstring failed. This is the most reliable path.
+        if (! $image && function_exists('imagecreatefromavif')) {
+            $image = @imagecreatefromavif($file->getRealPath());
+            if ($image) {
+                $format = 'AVIF (imagecreatefromavif)';
+            } else {
+                Log::channel('ai_scan')->error("❌ imagecreatefromavif FAILED for: {$originalName}");
+            }
+        }
+
+        // WebP fallback
+        if (! $image && function_exists('imagecreatefromwebp')) {
+            $image = @imagecreatefromwebp($file->getRealPath());
+            if ($image) {
+                $format = 'WebP (imagecreatefromwebp)';
+            }
+        }
+
         if (! $image) {
+            // Last resort: send raw bytes. This will likely fail for AVIF on Ollama
+            // side (Ollama's internal decoder may not support AVIF).
+            // Log clearly so operator knows this is risky.
+            Log::channel('ai_scan')->error("❌ ALL GD decoders FAILED for '{$originalName}' ({$extension}). Sending raw bytes — Ollama may reject this format!", [
+                'raw_size' => strlen($raw),
+                'extension' => $extension,
+            ]);
+            Log::warning('[OllamaService] All GD image decoders failed, sending raw file as base64', [
+                'file' => $originalName,
+                'extension' => $extension,
+                'raw_size' => strlen($raw),
+            ]);
             return base64_encode($raw);
         }
 
+        Log::info('[OllamaService] Image converted from: ' . $format, [
+            'file' => $originalName,
+            'original_size' => strlen($raw),
+        ]);
+
         try {
             $maxSide = 1024;
+            $jpegQuality = 85;
             $width = imagesx($image);
             $height = imagesy($image);
 
             if ($width <= 0 || $height <= 0) {
+                Log::warning('[OllamaService] Image has zero dimensions', ['file' => $originalName]);
                 return base64_encode($raw);
             }
 
             $scale = min(1, $maxSide / max($width, $height));
-            if ($scale >= 1) {
-                return base64_encode($raw);
+            
+            if ($scale < 1) {
+                $newWidth = max(1, (int) round($width * $scale));
+                $newHeight = max(1, (int) round($height * $scale));
+
+                $resized = imagecreatetruecolor($newWidth, $newHeight);
+                if (! $resized) {
+                    return base64_encode($raw);
+                }
+
+                imagealphablending($resized, false);
+                imagesavealpha($resized, true);
+                imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                
+                ob_start();
+                imagejpeg($resized, null, $jpegQuality);
+                $jpeg = ob_get_clean();
+                imagedestroy($resized);
+
+                Log::debug('[OllamaService] Image resized for Vision', [
+                    'file' => $originalName,
+                    'from' => "{$width}x{$height}",
+                    'to' => "{$newWidth}x{$newHeight}",
+                    'jpeg_size' => is_string($jpeg) ? strlen($jpeg) : 0,
+                ]);
+            } else {
+                ob_start();
+                imagejpeg($image, null, $jpegQuality);
+                $jpeg = ob_get_clean();
             }
-
-            $newWidth = max(1, (int) round($width * $scale));
-            $newHeight = max(1, (int) round($height * $scale));
-
-            $resized = imagecreatetruecolor($newWidth, $newHeight);
-            if (! $resized) {
-                return base64_encode($raw);
-            }
-
-            imagealphablending($resized, false);
-            imagesavealpha($resized, true);
-            imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-
-            ob_start();
-            imagejpeg($resized, null, 82);
-            $jpeg = ob_get_clean();
-            imagedestroy($resized);
 
             if (! is_string($jpeg) || $jpeg === '') {
+                Log::warning('[OllamaService] JPEG encoding produced empty output', ['file' => $originalName]);
                 return base64_encode($raw);
             }
 
             return base64_encode($jpeg);
-        } catch (Throwable) {
+        } catch (\Throwable $e) {
+            Log::error('[OllamaService] Image encoding exception', [
+                'file' => $originalName,
+                'error' => $e->getMessage(),
+            ]);
             return base64_encode($raw);
         } finally {
             imagedestroy($image);
@@ -624,6 +850,51 @@ Aturan:
 5. confidence di rentang 0..1.
 6. source_url wajib diambil dari URL sumber yang paling mendukung description.
 7. Output HARUS JSON valid sesuai schema, tanpa teks tambahan.
+
+Daftar sumber:
+{$joinedContexts}
+PROMPT;
+    }
+
+    /**
+     * @param array<int, array{url:string,title:string,snippet:?string,text:?string}> $contexts
+     */
+    private function buildWebIsbnPrompt(string $isbn, array $contexts): string
+    {
+        $contextBlocks = [];
+        foreach (array_values($contexts) as $index => $context) {
+            $url = $context['url'] ?? '';
+            $ctxTitle = $context['title'] ?? '';
+            $snippet = $context['snippet'] ?? '';
+            $text = $context['text'] ?? '';
+
+            $contextBlocks[] = sprintf(
+                "[Sumber %d]\nURL: %s\nJudul Halaman: %s\nSnippet: %s\nKonten: %s\n",
+                $index + 1,
+                $url,
+                $ctxTitle,
+                $snippet ?: '(kosong)',
+                $text ?: '(kosong)'
+            );
+        }
+
+        $joinedContexts = implode("\n", $contextBlocks);
+
+        return <<<PROMPT
+Anda adalah sistem ekstraksi metadata buku dari hasil pencarian web berdasarkan ISBN.
+
+ISBN Target: {$isbn}
+
+Ekstrak metadata buku dengan format JSON:
+{"title":"...","author":"...","description":"...","publisher":"...","category":"...","confidence":0.9,"source_url":"..."}
+
+Aturan:
+1. Gunakan HANYA informasi dari daftar sumber yang diberikan.
+2. Jika informasi (seperti publisher atau category) tidak ada, gunakan null.
+3. Description harus Bahasa Indonesia, ringkas 2-5 kalimat.
+4. Confidence (0.0 - 1.0) menunjukkan tingkat keyakinan bahwa metadata ini benar milik buku dengan ISBN {$isbn}.
+5. Source_url harus diisi dengan URL sumber yang paling banyak memberikan informasi.
+6. Output HARUS JSON valid, tanpa teks penjelasan tambahan.
 
 Daftar sumber:
 {$joinedContexts}

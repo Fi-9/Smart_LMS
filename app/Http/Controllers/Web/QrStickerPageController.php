@@ -81,7 +81,10 @@ class QrStickerPageController extends Controller
             ->orderBy('title')
             ->get();
 
-        return view('qr.print', [
+        $layout = $request->input('layout', 'default');
+        $viewName = $layout === 'tj103' ? 'qr.print-tj103' : 'qr.print';
+
+        return view($viewName, [
             'books' => $books,
         ]);
     }

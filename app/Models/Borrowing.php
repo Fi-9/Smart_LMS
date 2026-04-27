@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $book_id
+ * @property int|null $member_id
  * @property string $borrower_name
  * @property \Illuminate\Support\Carbon $borrowed_at
  * @property \Illuminate\Support\Carbon $due_date
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property BorrowingStatus $status
  * @property string|null $created_by
  * @property-read Book $book
+ * @property-read Member|null $member
  */
 class Borrowing extends Model
 {
@@ -25,6 +27,7 @@ class Borrowing extends Model
 
     protected $fillable = [
         'book_id',
+        'member_id',
         'borrower_name',
         'borrowed_at',
         'due_date',
@@ -43,6 +46,19 @@ class Borrowing extends Model
     public function book(): BelongsTo
     {
         return $this->belongsTo(Book::class);
+    }
+
+    public function member(): BelongsTo
+    {
+        return $this->belongsTo(Member::class);
+    }
+
+    /**
+     * Get the borrower display name — uses member name if linked, otherwise falls back to borrower_name string.
+     */
+    public function getBorrowerDisplayAttribute(): string
+    {
+        return $this->member?->name ?? $this->borrower_name;
     }
 
     public function isActive(): bool

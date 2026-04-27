@@ -26,12 +26,18 @@ class SettingsPageController extends Controller
             'masked_settings' => $this->settingsService->maskedAiSettings(),
             'ai_runtime' => $this->aiInfrastructureService->runtimeSummary(),
             'ai_diagnostics' => $this->aiInfrastructureService->diagnostics(),
+            'school_logo_path' => $this->settingsService->get('school_logo_path'),
         ]);
     }
 
     public function update(UpdateAiSettingsRequest $request): RedirectResponse
     {
         $validated = $request->validated();
+
+        if ($request->hasFile('school_logo')) {
+            $path = $request->file('school_logo')->store('logos', 'public');
+            $this->settingsService->putMany(['school_logo_path' => $path]);
+        }
 
         $this->settingsService->putMany([
             'google_books.api_key' => $validated['google_books_api_key'] ?? null,
@@ -50,7 +56,10 @@ class SettingsPageController extends Controller
             'ai.scan.default_mode' => $validated['scan_default_mode'],
         ]);
 
-        $this->envFileService->sync([
+        // Defer .env sync to AFTER the HTTP response is sent.
+        // Writing .env triggers Vite HMR restart & Laravel config reload,
+        // which can race with the redirect and cause a "layout pingsan" (CSS-less page).
+        $envValues = [
             'GOOGLE_BOOKS_API_KEY' => $validated['google_books_api_key'] ?? null,
             'OLLAMA_BASE_URL' => $validated['ollama_base_url'],
             'OLLAMA_VISION_MODEL' => $validated['ollama_vision_model'],
@@ -65,7 +74,8 @@ class SettingsPageController extends Controller
             'WEBSEARCH_MAX_RESULTS' => (int) $validated['websearch_max_results'],
             'WEBSEARCH_ALLOWED_DOMAINS' => $validated['websearch_allowed_domains'] ?? null,
             'AI_SCAN_DEFAULT_MODE' => $validated['scan_default_mode'],
-        ], [
+        ];
+        $envRemoveKeys = [
             'SEARXNG_BASE_URL',
             'SEARXNG_TIMEOUT',
             'OPENMAIC_BASE_URL',
@@ -74,7 +84,13 @@ class SettingsPageController extends Controller
             'OPENMAIC_TIMEOUT',
             'OPENMAIC_CACHE_MINUTES',
             'OPENMAIC_CACHE_MISS_MINUTES',
-        ]);
+        ];
+
+        $this->envFileService->sync($envValues, $envRemoveKeys);
+
+        // Trik rahasia: Jeda 500ms sebelum redirect agar server Laravel & Vite punya waktu
+        // untuk "napas" setelah file .env ditulis ulang. Ini mencegah "Layout Pingsan".
+        usleep(500000);
 
         return redirect()
             ->route('settings.index')

@@ -20,6 +20,7 @@ class StoreManualBookRequest extends FormRequest
             'isbn' => ['nullable', 'string', 'max:32', 'unique:books,isbn'],
             'category_name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            'condition_notes' => ['nullable', 'string'],
             'rack_id' => ['nullable', 'integer', 'exists:racks,id'],
             'cover_url' => [
                 'nullable',

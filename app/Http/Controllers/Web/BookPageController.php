@@ -9,6 +9,8 @@ use App\Models\Rack;
 use App\Services\BookService;
 use App\Services\RackService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class BookPageController extends Controller
@@ -68,6 +70,26 @@ class BookPageController extends Controller
             'rack_mini_map' => $this->buildRackMiniMap($book),
             'compact_description' => true,
         ]);
+    }
+
+    public function destroy(Book $book): JsonResponse|RedirectResponse
+    {
+        $title = $book->title;
+        $this->bookService->delete($book);
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Buku '{$title}' berhasil dihapus.",
+            ]);
+        }
+
+        return redirect()
+            ->route('books.index')
+            ->with('toast', [
+                'type' => 'success',
+                'message' => "Buku '{$title}' berhasil dihapus.",
+            ]);
     }
 
     private function buildRackMiniMap(?Book $book): ?array

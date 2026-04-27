@@ -43,6 +43,7 @@ class Book extends Model
         'qr_code',
         'status',
         'description',
+        'condition_notes',
     ];
 
     protected $casts = [
