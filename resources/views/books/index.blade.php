@@ -106,7 +106,7 @@
                             {{-- Quick Actions (always visible, full color on hover) --}}
                             <div class="flex shrink-0 flex-col gap-1 opacity-40 transition-opacity duration-200 group-hover:opacity-100">
                                 @if($book->rack_id)
-                                    <a href="{{ route('racks.show', $book->rack_id) }}" title="Move to rack" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">📍</a>
+                                    <a href="{{ route('rooms.show', $book->rack->room_id) }}" title="Lihat di Ruangan" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">📍</a>
                                 @endif
                                 <a href="{{ route('qr.print', ['selected_ids' => [$book->id]]) }}" target="_blank" title="Print QR" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">🔳</a>
                                 <a href="{{ route('books.web.show', $book->id) }}" title="Edit" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">✏️</a>

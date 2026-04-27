@@ -210,7 +210,7 @@
             @endif
 
             @if($book->rack_id)
-                <a href="{{ route('racks.show', $book->rack_id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Move</a>
+                <a href="{{ route('rooms.show', $book->rack->room_id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Lihat Rak</a>
             @else
                 <a href="{{ route('racks.index') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Assign</a>
             @endif
@@ -218,6 +218,15 @@
                 <a href="{{ route('qr.print', ['selected_ids' => [$book->id]]) }}" target="_blank" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Print QR</a>
             @endif
             <a href="{{ route('books.web.show', $book->id) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Full Detail</a>
+            <button
+                type="button"
+                data-delete-book-btn
+                data-delete-url="{{ route('books.destroy', $book->id) }}"
+                data-book-title="{{ $book->title }}"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 hover:border-red-300"
+            >
+                🗑️ Hapus
+            </button>
         </div>
     </x-card>
 
@@ -235,10 +244,20 @@
             <form id="borrow-form" class="space-y-4" data-borrow-url="{{ route('borrowings.store') }}">
                 <input type="hidden" name="book_id" value="{{ $book->id }}">
 
-                <div>
-                    <label for="borrower_name" class="form-label">Nama Peminjam</label>
-                    <input type="text" id="borrower_name" name="borrower_name" class="form-input" required placeholder="Masukkan nama peminjam">
+                <div x-data="memberAutocomplete()" class="relative">
+                    <label class="form-label">Nama Peminjam *</label>
+                    <input type="hidden" name="member_id" x-model="memberId">
+                    <input type="text" name="borrower_name" x-model="search" @input.debounce.300ms="fetchMembers" @focus="showDropdown = true" @click.away="showDropdown = false" class="form-input" required placeholder="Cari nama atau NIS siswa/guru..." autocomplete="off">
                     <p id="error-borrower_name" class="mt-1 hidden text-xs text-red-600"></p>
+
+                    <div x-show="showDropdown && members.length > 0" class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg" style="display: none;">
+                        <template x-for="member in members" :key="member.id">
+                            <button type="button" @click="selectMember(member)" class="flex w-full flex-col items-start px-4 py-2 text-left hover:bg-primary-50 focus:bg-primary-50 focus:outline-none">
+                                <span class="font-semibold text-gray-900" x-text="member.name"></span>
+                                <span class="text-xs text-gray-500" x-text="member.nis + (member.class ? ' - ' + member.class : '')"></span>
+                            </button>
+                        </template>
+                    </div>
                 </div>
 
                 <div>
@@ -308,7 +327,7 @@
         openBorrowBtn.addEventListener('click', () => {
             borrowModal.classList.remove('hidden');
             borrowModal.classList.add('flex');
-            document.getElementById('borrower_name').focus();
+            document.querySelector('[name="borrower_name"]')?.focus();
         });
     }
 
@@ -415,5 +434,70 @@
             }
         });
     }
+    const deleteBtn = panel.querySelector('[data-delete-book-btn]');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            const title = deleteBtn.dataset.bookTitle;
+            const confirmed = confirm(`⚠️ Yakin mau hapus buku "${title}" dari SMK Mustaqbal?\n\nData buku, QR code, dan riwayat peminjaman akan dihapus permanen.`);
+            if (!confirmed) return;
+
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '⏳ Menghapus...';
+
+            try {
+                const response = await fetch(deleteBtn.dataset.deleteUrl, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json',
+                    },
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || 'Gagal menghapus buku');
+
+                if (window.showGlobalToast) window.showGlobalToast('OK ' + result.message);
+                window.setTimeout(() => window.location.reload(), 800);
+            } catch (error) {
+                alert(error.message);
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = '🗑️ Hapus';
+            }
+        });
+    }
 })();
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('memberAutocomplete', () => ({
+        search: '',
+        memberId: '',
+        members: [],
+        showDropdown: false,
+
+        async fetchMembers() {
+            if (this.search.length < 2) {
+                this.members = [];
+                this.memberId = '';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/members/search?q=${encodeURIComponent(this.search)}`);
+                if (res.ok) {
+                    this.members = await res.json();
+                    this.showDropdown = true;
+                }
+            } catch (e) {
+                console.error('Failed to fetch members', e);
+            }
+        },
+
+        selectMember(member) {
+            this.search = member.name;
+            this.memberId = member.id;
+            this.showDropdown = false;
+        }
+    }));
+});
 </script>

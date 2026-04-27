@@ -619,3 +619,25 @@
   \"title\": \"Seri Profesi STEAM: Ibuku Seorang Saintis\",
   \"author\": \"Dr. Shini Somara & Nadja Sarell\",
   \"description\": \"Buku ini mengenalkan dunia sains, pengamatan, dan pemecahan masalah kepada an"} 
+[2026-04-23 09:52:02] local.INFO: Raw Vision Response: 
+{
+  "title": "Bintang",
+  "author": "Tere Liye",
+  "description": "Kisah petualangan Raib, Seli, dan Ali yang memiliki kekuatan super dalam dunia paralel. Setelah menyelamatkan dunia dari ancaman besar, mereka menghadapi tantangan baru yang justru dimulai oleh diri mereka sendiri.",
+  "publisher": null,
+  "category": "Fiksi",
+  "confidence": 0.9,
+  "source_url": "https://mizanstore.com/BINTANG_gramedia_58375?srsltid=AfmBOooATLMjAPfeHsEoLqYk0XGBW6JGQp6h-u3EHtgNTp_t2GK_z1Pl"
+}  
+[2026-04-23 09:52:02] local.INFO: JSON decoded successfully from candidate {"preview":"{
+  \"title\": \"Bintang\",
+  \"author\": \"Tere Liye\",
+  \"description\": \"Kisah petualangan Raib, Seli, dan Ali yang memiliki kekuatan super dalam dunia paralel. Setelah menyelamatkan dunia dari ancaman besa"} 
+[2026-04-24 06:17:49] local.INFO: === START AI SCAN ===  
+[2026-04-24 06:17:49] local.INFO: Sending 1 image(s) to Vision model [qwen3-vl:8b]  
+[2026-04-24 06:17:49] local.INFO: 🖼️ Processing image: rindu.jpg (jpg, 8 KB)  
+[2026-04-24 06:17:49] local.INFO: 📦 Total image payload: 10 KB for 1 image(s)  
+[2026-04-24 06:18:20] local.INFO: Ollama responded in 31.58s | eval_count: 1200 | prompt_eval: 309 | response_length: 0  
+[2026-04-24 06:18:20] local.ERROR: 🚨 EMPTY RESPONSE DETECTED: eval_count=1200, prompt_eval=309. Likely causes: (1) thinking mode exhausted num_predict, (2) image payload rejected by model, (3) model VRAM overload.  
+[2026-04-24 06:18:20] local.INFO: Raw Vision Response: 
+  

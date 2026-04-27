@@ -38,7 +38,7 @@
         </div>
     <?php endif; ?>
 
-    <form method="POST" action="<?php echo e(route('settings.update')); ?>" class="space-y-6">
+    <form method="POST" action="<?php echo e(route('settings.update')); ?>" enctype="multipart/form-data" class="space-y-6">
         <?php echo csrf_field(); ?>
         <div class="grid gap-6 xl:grid-cols-2">
             <section class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
@@ -124,6 +124,22 @@
                 </div>
             </section>
         </div>
+        
+        <section class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
+            <h2 class="text-lg font-bold text-gray-900">School Identity</h2>
+            <p class="mt-1 text-sm text-gray-500">Identitas sekolah untuk cetak stiker dan laporan.</p>
+
+            <div class="mt-5">
+                <label class="form-label">School Logo</label>
+                <div class="mt-2 flex items-center gap-4">
+                    <?php if($school_logo_path): ?>
+                        <img src="<?php echo e(Storage::url($school_logo_path)); ?>" alt="School Logo" class="h-16 w-16 object-contain rounded border bg-gray-50 p-1">
+                    <?php endif; ?>
+                    <input type="file" name="school_logo" accept="image/png, image/jpeg, image/jpg" class="form-input w-full max-w-md">
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Disarankan rasio 1:1, format PNG transparan atau JPG. Maks 2MB. Logo ini akan dicetak di tengah QR Code stiker buku.</p>
+            </div>
+        </section>
 
         <section class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
             <h2 class="text-lg font-bold text-gray-900">AI Scan Worker</h2>

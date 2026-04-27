@@ -15,7 +15,8 @@ class BorrowBookRequest extends FormRequest
     {
         return [
             'book_id' => ['required', 'integer', 'exists:books,id'],
-            'borrower_name' => ['required', 'string', 'max:255'],
+            'member_id' => ['nullable', 'integer', 'exists:members,id'],
+            'borrower_name' => ['required_without:member_id', 'nullable', 'string', 'max:255'],
             'due_date' => ['required', 'date', 'after:today'],
         ];
     }
@@ -23,7 +24,8 @@ class BorrowBookRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'borrower_name.required' => 'Nama peminjam wajib diisi.',
+            'member_id.exists' => 'Anggota tidak ditemukan.',
+            'borrower_name.required_without' => 'Nama peminjam wajib diisi jika bukan anggota terdaftar.',
             'due_date.required' => 'Tanggal pengembalian wajib diisi.',
             'due_date.after' => 'Tanggal pengembalian harus setelah hari ini.',
         ];

@@ -8,6 +8,274 @@
   - File yang berubah
   - Dampak/tujuan
 
+## 2026-04-26
+
+### 🛠️ Phase D' Refinement v2.1: Context-Aware Map & Slot Management
+- **Database:** Migrasi mengubah `column_category` (string) menjadi `column_categories` (JSON) pada tabel `racks`.
+- **UX: Per-Column Category:** Grid `racks/show` kini memiliki header kolom yang *clickable*, memunculkan dropdown *inline* untuk assign kategori rak secara spesifik per-kolom via API (tanpa reload).
+- **UX: Integrated Management Zone:** 
+  - Form pindah buku ("Management Zone") dan tabel "Daftar Buku per Slot" dilebur menjadi satu panel "Slot-Aware".
+  - Panel hanya muncul jika slot grid di-*klik*.
+  - Dropdown "Buku yang dipindah" secara otomatis terfilter **hanya** menampilkan buku-buku di slot yang aktif tersebut.
+- **Navigation Guard:** Akses ke `racks.show` disortir agar *strict* melalui alur *Drill-Down*. 
+  - Link langsung `racks.show` pada `books/index` dan `books/detail_panel` diganti mengarah ke `rooms.show` (Lihat di Ruangan).
+  - Link `racks.show` untuk rak tanpa ruangan (*Unassigned Racks*) di-disable menjadi pesan statis ("Perlu dimasukkan ke Ruangan").
+- **UI Cleanup:**
+  - Toolbar `racks/show` dibikin super *compact* ("⚡ Auto" dan "🖨️ QR").
+  - Menghapus 100+ baris *dead code* (termasuk *Edit Rack Modal* lama yang nganggur di `racks/show`).
+  - Hapus field `column_category` dari form `rooms/show`.
+
+### 🎨 Phase D' Refinement — Library Map UX Polish
+- **Tujuan:** Memperbaiki micro-interactions, hierarki visual, dan konsistensi bahasa pada modul Library Map berdasarkan evaluasi pasca-refactor.
+
+#### 🏛️ Step 1: Lobby Cleanup (`racks/index.blade.php`)
+- Icon kartu ruangan diganti dari **Folder** → **LayoutGrid** (4 kotak) agar lebih merepresentasikan rak perpustakaan.
+- Emoji 🚪 dihapus dari tombol "Masuk ke Ruangan" — UI lebih profesional.
+- Label "Room Explorer" → **"Daftar Ruangan"** — konsistensi bahasa Indonesia.
+
+#### 🚪 Step 2: Hallway Refactor (`rooms/show.blade.php`)
+- **Form "Tambah Rak"** dipindah ke **posisi paling atas** halaman (di bawah Room Header).
+- Field baru **"Kategori Kolom"** (`column_category`) ditambahkan pada form pembuatan rak.
+- **Kartu Rak** dirombak:
+  - Proporsi diperbesar tinggi (`min-height: 16rem`) — *portrait* seperti rak fisik asli.
+  - Info Grid (3×4) dan Jumlah Buku dipindah ke **header compact** sebaris nama rak.
+  - **Hover Edit Button** (icon pensil) ditambahkan di pojok kanan atas, muncul saat hover (`opacity-0 → opacity-100`).
+  - **Modal Edit Rak** per-rak (Edit nama, grid, kapasitas, kategori, pindah ruangan, hapus) — dipindah dari Rack Detail ke sini.
+  - Grid preview **full-slot** (semua slot ditampilkan), setiap slot menampilkan **Nama Kategori** + **Jumlah Buku** (bukan lagi kode A1/A2).
+- Label "Buka Rack →" → **"Buka Rak →"** — konsistensi bahasa.
+
+#### 🏗️ Step 3: Shelf "Slot-In" Interaction (`racks/show.blade.php`)
+- **Tombol "Edit Rack" dihapus** — edit kini hanya dari level Room (Hallway).
+- **Tab "Table Mode" dihapus** — tinggal **Rack Explorer** + **Manual Input**.
+- **Interaksi baru "Slot-In":**
+  - Klik kotak slot terisi → **Active Glow** (`ring-4 ring-emerald-400 shadow-emerald-500/30 scale-105`) menyala persisten.
+  - Tabel buku slot tersebut muncul di bawah grid (inline, bukan popup).
+  - Tabel menampilkan: Posisi, Judul Buku (link ke detail), Status, Aksi.
+  - Klik slot lain → glow pindah, tabel ter-refresh.
+  - Klik slot kosong → tabel menampilkan "Slot X kosong."
+- **Book Info Popup** (modal) dihapus — digantikan tabel inline.
+- **Dead code cleanup:** Variabel popup, table search, closeBookPopup dihapus.
+- **Grid search** buku tetap berfungsi seperti sebelumnya (highlighting slot).
+
+**File yang diubah:**
+- `resources/views/racks/index.blade.php` — icon, emoji, label
+- `resources/views/rooms/show.blade.php` — **REWRITE** (form top, tall cards, edit modal, grid intelligence)
+- `resources/views/racks/show.blade.php` — Slot-In interaction, dead code removal
+
+## 2026-04-24
+
+### 🔧 Master Refactoring — Phase D' + E' (Koreksi Besar)
+- **Tujuan:** Rombak total UX Library Map dan Smart Ingest berdasarkan evaluasi alur kerja pustakawan.
+
+#### 🗄️ Step 1: Database Foundation
+- Migrasi `add_condition_notes_to_books_table`: kolom `condition_notes` (`text`, nullable) ditambahkan ke tabel `books`.
+- Model `Book.php`: `condition_notes` ditambahkan ke `$fillable`.
+- `StoreManualBookRequest`: rule `condition_notes => nullable|string` ditambahkan.
+
+#### 🏛️ Step 2: Library Map Drill-Down
+- **Lobby (`racks/index.blade.php`):** Dirombak total — accordion dihapus, sekarang hanya menampilkan:
+  - Header statistik (Rooms, Racks, Buku Terpetakan)
+  - Grid card ruangan dengan tombol **"🚪 Masuk ke Ruangan"** dan **"⚙️ Edit"**
+  - Section "Rak Belum Ditugaskan"
+  - Modal Tambah/Edit/Hapus Ruangan
+  - Form "Create Rack" dipindah ke Room Detail
+- **Room Detail (`rooms/show.blade.php`):** Halaman baru (The Hallway):
+  - Header: kode, nama, deskripsi, status ruangan
+  - Grid card rak dengan mini grid preview
+  - Form "Tambah Rak" otomatis terhubung ke ruangan ini
+  - Tombol "Kembali ke Lobby"
+- **Route baru:** `GET /rooms/{room}` → `RoomPageController@show` → `rooms.show`
+- **Breadcrumb:** Library Map > Ruang Referensi > Rak A-1 (3 level)
+- **Back link Rack Detail:** otomatis mengarah ke Room Detail jika rak punya room
+
+#### 🏗️ Step 3: Rack Explorer UX & Manual Input Migration
+- **Tab Manual Input** ditambahkan di `racks/show.blade.php` (sejajar Rack Explorer + Table Mode)
+- Form Manual Input dipindah dari Smart Ingest ke sini dengan perbedaan:
+  - `rack_id` otomatis terisi (hidden input)
+  - Dropdown "Rack" diganti text disabled (locked ke rak saat ini)
+  - Field baru **"Kondisi Buku"** (`condition_notes`) sejajar dengan "Cover URL"
+  - ISBN Fetch berfungsi langsung (JS ditambahkan)
+
+#### ⚡ Step 4: Smart Ingest Continuous Looper
+- **Tab bar** dirombak dari 3-tab menjadi: **AI Scan** | **ISBN Scan** | **Review & Grouping**
+- Tab "Manual Input" dihapus sepenuhnya dari Smart Ingest (sudah pindah ke Rack Detail)
+- **ISBN Scan tab baru:** Continuous Looper UI
+  - Input ISBN besar (`text-xl font-mono`) di bagian atas
+  - Tombol Fetch + Enter key listener
+  - **The Loop Logic:** Fetch berhasil → card muncul di list → toast "✅ Berhasil!" → input.value reset → input.focus() otomatis
+  - Fetch gagal → pesan error → input.select() untuk re-type
+  - Counter buku terfetch di status bar
+  - Empty state panel saat belum ada buku
+- **Backend AI pipeline 100% tidak tersentuh**
+
+**File yang diubah:**
+- `database/migrations/2026_04_24_070526_add_condition_notes_to_books_table.php`
+- `app/Models/Book.php`
+- `app/Http/Requests/StoreManualBookRequest.php`
+- `app/Http/Controllers/Web/RoomPageController.php`
+- `resources/views/racks/index.blade.php` — **REWRITE** (Lobby)
+- `resources/views/rooms/show.blade.php` — **BARU** (Room Detail)
+- `resources/views/racks/show.blade.php` — Manual Input tab + ISBN Fetch JS
+- `resources/views/books/import.blade.php` — ISBN Looper + tab restructure
+- `resources/views/layouts/app.blade.php` — breadcrumb rooms.show
+- `routes/web.php` — rooms.show route
+
+### ⚡ Phase E — Smart Ingest UI Reframe (3-Tab Stepper)
+- **Tujuan:** Merestrukturisasi UI Smart Ingest dari 2-tab (`Unified Ingest` + `Manual Input`) menjadi **3-tab stepper** yang lebih jelas dan intuitif, tanpa menyentuh backend AI pipeline sama sekali.
+- **Perubahan UI:**
+  - **Tab bar** dirombak menjadi stepper bernomor: `① Scan & Upload` → `② Review & Grouping` → `③ Manual Input`.
+  - Step number menggunakan dot bulat berwarna (`bg-primary-700` untuk aktif, `bg-gray-300` untuk inaktif) yang berubah otomatis saat tab dipilih.
+  - Review & Grouping dipromosikan dari *inner tab* di dalam panel AI menjadi **tab top-level** mandiri, sehingga lebih mudah diakses dan lebih terlihat.
+  - Inner tab system (`data-ai-tab-trigger` / `data-ai-tab-panel`) dihapus sepenuhnya. Semua navigasi konten kini dikendalikan oleh 1 sistem tab top-level.
+  - **Auto-select** tab berdasarkan state: jika ada draft scan → langsung buka tab Review. Jika ada error manual → langsung buka tab Manual Input.
+- **File:**
+  - `resources/views/books/import.blade.php`
+- **Dampak:**
+  - UX Smart Ingest lebih jelas dengan flow 3-langkah linear.
+  - Backend AI pipeline 100% tidak tersentuh.
+
+### 🏛️ Phase D — Library Map (Room Domain + Real Data)
+- **Tujuan:** Mengganti sistem *mock room* (data dummy hardcoded di controller) dengan entitas `Room` yang sesungguhnya, sehingga pustakawan bisa CRUD ruangan dan menugaskan rak ke ruangan secara permanen.
+- **Database:**
+  - Migrasi `create_rooms_table`: kolom `name`, `code` (unique), `description`, `status` (active/preview/inactive), `accent` (warna tema), `sort_order`.
+  - Modifikasi tabel `racks`: menambahkan FK `room_id` (nullable) yang menunjuk ke `rooms`.
+- **Model:**
+  - `Room`: Relasi `racks()` (HasMany), `books()` (HasManyThrough), accessor `accent_classes` untuk mapping warna UI, helper `isActive()`.
+  - `Rack`: Ditambahkan `room_id` di fillable, relasi `room()` (BelongsTo).
+- **Controller (`RoomPageController`):**
+  - `index()`: Menggantikan `RackPageController::index()` sebagai handler utama route `racks.index`. Mengambil data ruangan real dari DB, termasuk rak yang belum ditugaskan (unassigned).
+  - CRUD Room: `store()`, `update()`, `destroy()` dengan validasi (`code` unik, guard hapus jika masih ada rak).
+  - `suggestSlot()`: Endpoint API **"Find Empty Slot"** — mengembalikan 5 rak dengan okupansi terendah beserta slot kosong yang tersedia, siap dipakai di Smart Ingest Tab 3.
+- **Views (`racks/index.blade.php`):**
+  - Dirombak total dari mock data ke data real `$rooms` dari controller.
+  - Room accordion cards sekarang menampilkan data dari database (nama, kode, deskripsi, status, warna aksen, jumlah rak).
+  - Section **"Rak Belum Ditugaskan"** ditambahkan (border amber dashed) untuk rak yang belum di-assign ke ruangan manapun.
+  - Modal **"Tambah Ruangan"** baru (Alpine.js) untuk CRUD room tanpa pindah halaman.
+  - Form **"Tambah Rak"** diupgrade dengan dropdown pemilihan ruangan (`room_id`).
+- **Sidebar:** Menu **Members** ditambahkan ke navigasi sidebar (sebelum Settings). Breadcrumb untuk Members juga ditambahkan.
+- **Seeding:** 3 ruangan default (`RM-01 Ruang Referensi`, `RM-02 Area Literasi`, `RM-03 Creative Zone`) di-seed, dan 4 rak yang sudah ada di-assign secara round-robin.
+- **Routes:**
+  - `GET /racks` sekarang diarahkan ke `RoomPageController@index`.
+  - Ditambahkan: `POST /rooms`, `PUT /rooms/{room}`, `DELETE /rooms/{room}`, `GET /rooms/suggest-slot`.
+- **Validasi:** `StoreRackRequest` ditambahkan validasi `room_id` (nullable, exists).
+- **File:**
+  - `database/migrations/2026_04_24_030246_create_rooms_table.php`
+  - `app/Models/Room.php` — **BARU**
+  - `app/Models/Rack.php`
+  - `app/Http/Controllers/Web/RoomPageController.php` — **BARU**
+  - `app/Http/Requests/StoreRackRequest.php`
+  - `resources/views/racks/index.blade.php`
+  - `resources/views/layouts/app.blade.php`
+  - `routes/web.php`
+- **Dampak:**
+  - Library Map sekarang menggunakan data real, bukan hardcoded.
+  - Pustakawan bisa menambah/edit/hapus ruangan dari UI.
+  - Rak bisa ditugaskan ke ruangan saat dibuat.
+  - Endpoint "Find Empty Slot" siap dipakai untuk fitur placement suggestor di Smart Ingest.
+
+### 🔄 Phase C — Borrowing Upgrade (Relational Integration)
+- **Tujuan:** Menghubungkan fitur peminjaman (`Borrowing`) dengan database anggota baru (`Members`) dari Phase B.
+- **Backend Refactoring:**
+  - `BorrowBookRequest`: Validasi ditambahkan untuk `member_id`. `borrower_name` menjadi `required_without:member_id`, memfasilitasi fallback bagi tamu/peminjam insidentil.
+  - `BorrowingService`: Memodifikasi `borrowBook` untuk menyimpan `member_id` yang diterima. Melakukan preload (Eager Load) `member` pada methode `paginate()`. Merombak filter pencarian untuk mencakup relasi `member` (berdasarkan `name` dan `nis`).
+  - `BorrowingController`: Meneruskan payload `member_id` dari Request ke Service.
+- **Frontend Refactoring (Tema Lumina):**
+  - **Daftar Borrowings (`borrowings/index.blade.php`)**: Memanfaatkan accessor `borrower_display`. Jika peminjam adalah member terdaftar, namanya menjadi link yang mengarah ke halaman profil (`members.show`) lengkap dengan label NIS. Jika tidak (guest/string), diberi flag "Unlinked" warna amber.
+  - **Form Pinjam (`books/partials/detail_panel.blade.php`)**: Menghapus form input statis dan menggantinya dengan komponen **AlpineJS (`memberAutocomplete`)**. Komponen ini akan memberikan live search/dropdown sugesti memanggil API `/members/search` secara asinkron. Member ID yang dipilih secara hidden disematkan ke payload form.
+
+### 👥 Phase B — Members Module (Database & CRUD)
+- **Tujuan:** Membuat foundation manajemen data anggota (siswa, guru, staff) sehingga peminjaman buku tidak lagi mengandalkan input string manual (`borrower_name`) melainkan berelasi ke data anggota riil.
+- **Database:**
+  - Migrasi `create_members_table`: kolom nis, name, class, phone, email, photo, type, status.
+  - Modifikasi tabel `borrowings`: menambahkan FK `member_id` (nullable untuk backward compatibility sementara).
+- **Models:**
+  - `Member`: Menyimpan relasi `borrowings`, scope `activeBorrowings`, dan accessor `display_label` untuk kemudahan autocomplete.
+  - `Borrowing`: Menambahkan fillable `member_id`, relasi `member()`, dan accessor `borrower_display` untuk fallback elegan antara relasi vs string lama.
+- **Controller & Routes:**
+  - `MemberPageController`: Handle CRUD, pencarian canggih (search, status, type filter), pagination, dan endpoint API `/members/search` untuk Select2/AlpineJS autocomplete.
+  - Penjagaan integritas: Member tidak bisa dihapus jika masih punya tanggungan peminjaman aktif.
+- **Views (Tema Lumina):**
+  - `members.index`: Datatable cantik dengan quick stats cards, inline badge status, dan AlpineJS modal terintegrasi (Add & Edit) tanpa meninggalkan halaman.
+  - `members.show`: Profil member dengan informasi pinjaman (Total Pinjam, Sedang Pinjam, Terlambat) dan riwayat peminjaman.
+
+### 🎨 Phase A — Navigation Shell & Tema Lumina (Smart Library v2.0)
+- **Tujuan:** Merombak total UI shell dari dark navy panel ke desain **Lumina** (abu terang bersih) sesuai referensi visual produk modern. Ini adalah fase pertama dari roadmap v2.0 yang fokus pada wajah produk tanpa menyentuh backend.
+- **Sidebar Refactor:**
+  - Desain baru: flat navigation dengan 7 menu (Dashboard, Search Book, Library Map, Categories, Smart Ingest, Borrowing, Settings)
+  - Ikon SVG konsisten (Lucide-style) via partial `layouts/partials/nav-icon.blade.php`
+  - Active state: `bg-primary-50 text-primary-800` (light) / `bg-primary-500/15 text-primary-300` (dark)
+  - Hover state halus: `bg-sidebar-hover` / `bg-white/5` (dark)
+  - Brand area disederhanakan: ikon buku + "Smart Library" + "SMK Mustaqbal"
+  - User info + logout di bagian bawah sidebar
+  - Responsive: sidebar collapse di mobile + hamburger menu + overlay
+- **Tema Lumina (Light/Dark):**
+  - CSS variables baru: `--sidebar-bg`, `--sidebar-foreground`, `--sidebar-muted`, `--sidebar-border`, `--sidebar-hover`
+  - Light Mode: sidebar abu terang (`243 244 246`), konten putih bersih
+  - Dark Mode: sidebar slate gelap (`15 23 42`), konten slate medium
+  - Menghapus `app-shell-glow` radial gradient yang terlalu mencolok
+  - Menghapus `panel-*` tokens lama, diganti `sidebar-*` tokens
+  - Tailwind config: 5 warna baru (sidebar, sidebar-foreground, sidebar-muted, sidebar-border, sidebar-hover)
+- **Header Bar Refactor:**
+  - Sticky header dengan backdrop-blur
+  - Breadcrumb dinamis (tetap dipertahankan dari implementasi sebelumnya)
+  - System Status indicator (Online badge)
+  - Menghapus CTA buttons (Open Smart Ingest / Open Library Map) yang redundan dengan sidebar
+  - Menghapus "Smart Library Workspace" heading yang memakan ruang
+- **README Overhaul:**
+  - Mengganti README default Laravel dengan dokumentasi produk Smart Library v2.0
+  - Mencakup: fitur utama, AI pipeline diagram, tech stack, instalasi, konfigurasi AI, struktur direktori
+- **File:**
+  - `resources/views/layouts/app.blade.php` — full rewrite sidebar + header
+  - `resources/views/layouts/partials/nav-icon.blade.php` — **BARU** partial ikon SVG
+  - `resources/css/app.css` — tema Lumina + sidebar CSS variables
+  - `tailwind.config.js` — sidebar color tokens
+  - `README.md` — dokumentasi produk
+  - `docs/change_log.md`
+- **Verifikasi:**
+  - `npx vite build` → sukses (CSS 79KB, JS 84KB)
+  - `php artisan view:cache` → sukses
+  - Backend tidak tersentuh sama sekali
+- **Dampak:**
+  - UI shell sekarang terasa seperti produk SaaS modern, bukan dashboard admin generik
+  - Sidebar lebih ringan secara visual, cocok untuk ditatap berjam-jam oleh pustakawan
+  - Layout responsive dengan mobile sidebar siap pakai
+  - Fondasi tema siap untuk fase-fase berikutnya (Library Map, Smart Ingest reframe, dll)
+
+## 2026-04-23
+
+### 🎨 Library Map Accordion + Rack Explorer Lumina Refresh
+- **Tujuan:** Mengganti visual `Library Map` yang sebelumnya terasa terlalu “folder explorer” menjadi card accordion yang lebih rapi, lalu membuat halaman detail rack terasa seperti explorer internal rak bergaya Lumina.
+- **Perubahan utama pada `Library Map`:**
+  1. `RackPageController::index()` sekarang membentuk `library_rooms` sebagai mock room grouping agar tampilan ruangan bisa menampung daftar rack nyata tanpa menunggu entitas `Room` final di database.
+  2. `resources/views/racks/index.blade.php` dirombak total menjadi **room accordion cards**:
+     - card ruangan bisa **expand/collapse**
+     - animasi buka-tutup memakai transisi `max-height + opacity`
+     - setiap rack di dalam ruangan tampil sebagai card kecil yang **clickable** menuju halaman detail rack
+  3. Visual ruangan kini lebih mirip **zone card / room card**, bukan ikon folder besar.
+- **Perubahan utama pada halaman detail rack:**
+  1. `resources/views/racks/show.blade.php` mendapatkan shell baru:
+     - tombol kembali ke peta
+     - header rack yang lebih premium
+     - statistik slot (`tersedia`, `terisi`, `kapasitas`)
+     - toggle `Rack Explorer / Table Mode`
+  2. Grid slot rack dirombak menjadi **slot cards** bergaya rak buku:
+     - label `SLOT A1`, `SLOT B2`, dst
+     - batang-batang “book spine” visual seperti mockup Lumina
+     - slot tetap clickable untuk assign / detail buku
+  3. `Management Zone` dipertahankan di bawah grid untuk quick move antar slot.
+- **Styling pendukung:**
+  - `resources/css/app.css`: ditambahkan class baru seperti `rack-slot-card`, `slot-book-bar`, dan state `is-filled / is-selected` untuk mendukung visual rack yang lebih halus.
+- **File:**
+  - `app/Http/Controllers/Web/RackPageController.php`
+  - `resources/views/racks/index.blade.php`
+  - `resources/views/racks/show.blade.php`
+  - `resources/css/app.css`
+  - `docs/change_log.md`
+- **Dampak:**
+  - `Library Map` sekarang terasa lebih modern, ringan, dan sesuai arah desain Lumina.
+  - Hierarki `ruangan -> rack -> slot` tetap jelas tanpa mengandalkan visual folder besar.
+  - Saat rack diklik, operator langsung masuk ke tampilan internal rack yang lebih intuitif dan visual.
+
 ## 2026-04-22
 
 ### 🚀 ISBN Multi-Provider Fetch (Hybrid Lookup)

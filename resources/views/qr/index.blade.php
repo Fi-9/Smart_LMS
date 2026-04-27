@@ -72,6 +72,13 @@
                     Select All
                 </label>
                 <a
+                    href="{{ route('qr.print', ['rack_id' => $selected_rack_id, 'category_id' => $selected_category_id, 'layout' => 'tj103']) }}"
+                    target="_blank"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                    🖨️ Print T&J 103
+                </a>
+                <a
                     href="{{ route('qr.print', ['rack_id' => $selected_rack_id, 'category_id' => $selected_category_id]) }}"
                     target="_blank"
                     class="inline-flex items-center gap-1.5 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
@@ -87,6 +94,8 @@
 
             <div class="mb-3 flex items-center gap-3">
                 <x-button id="print-selected-btn" type="submit" variant="success" disabled>🖨️ Print Selected</x-button>
+                <x-button id="print-tj103-selected-btn" type="button" class="bg-indigo-600 hover:bg-indigo-700 text-white" disabled onclick="document.getElementById('layout-input').value='tj103'; document.getElementById('print-selected-form').submit(); document.getElementById('layout-input').value='';">🖨️ Print T&J 103</x-button>
+                <input type="hidden" name="layout" id="layout-input" value="">
                 <span id="selected-count" class="text-xs font-medium text-gray-500">0 selected</span>
             </div>
 
@@ -125,6 +134,8 @@
             const updateSelectedState = () => {
                 const selectedCount = Array.from(checkboxes).filter((cb) => cb.checked).length;
                 printSelectedButton.disabled = selectedCount === 0;
+                const printTj103Btn = document.getElementById('print-tj103-selected-btn');
+                if (printTj103Btn) printTj103Btn.disabled = selectedCount === 0;
                 selectedCountNode.textContent = `${selectedCount} selected`;
             };
 

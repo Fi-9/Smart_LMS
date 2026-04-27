@@ -34,8 +34,8 @@
     ?>
 
     <div class="mb-6">
-        <h1 class="page-title">Import Books</h1>
-        <p class="page-subtitle">Scan AI untuk banyak buku sekaligus, review hasil per kategori, lalu baru masuk ke rack.</p>
+        <h1 class="page-title">Smart Ingest</h1>
+        <p class="page-subtitle">Unified ingest untuk upload aset, review draft metadata, dan routing buku ke lokasi fisik perpustakaan.</p>
     </div>
 
     <div class="mb-6 rounded-[1.35rem] border border-gray-200 bg-white px-4 py-3 shadow-sm">
@@ -84,22 +84,32 @@
         </div>
     <?php endif; ?>
 
-    <div class="mb-5 flex gap-1 rounded-xl bg-gray-100 p-1" style="width: fit-content">
-        <button type="button" data-tab-trigger="ai" class="rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">AI Scan</button>
-        <button type="button" data-tab-trigger="manual" class="rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">Manual Input</button>
+    <div class="mb-5 flex items-center gap-1 rounded-xl bg-gray-100 p-1" style="width: fit-content">
+        <button type="button" data-tab-trigger="ai" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-700 text-[10px] font-bold text-white">📷</span>
+            AI Scan
+        </button>
+        <button type="button" data-tab-trigger="isbn" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">📖</span>
+            ISBN Scan
+        </button>
+        <button type="button" data-tab-trigger="review" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">✓</span>
+            Review & Grouping
+        </button>
     </div>
 
     <div data-tab-panel="ai" class="<?php echo e($hasManualErrors ? 'hidden' : ''); ?>">
         <div class="mb-5 rounded-[1.4rem] border border-primary-100 bg-gradient-to-r from-primary-50 via-white to-amber-50 px-5 py-4">
             <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary-700">AI Batch Intake</p>
-                    <h2 class="mt-1 text-xl font-black tracking-tight text-gray-900">Front cover wajib, back cover opsional untuk bantu baca sinopsis.</h2>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary-700">Waterfall Pipeline</p>
+                    <h2 class="mt-1 text-xl font-black tracking-tight text-gray-900">Upload assets, review grouping, lalu tentukan routing fisik buku.</h2>
                 </div>
                 <div class="flex flex-wrap gap-3 text-sm text-gray-600">
-                    <span class="rounded-full bg-white px-3 py-1.5">1. Tambah slot buku</span>
-                    <span class="rounded-full bg-white px-3 py-1.5">2. Upload & scan batch</span>
-                    <span class="rounded-full bg-white px-3 py-1.5">3. Review per kategori</span>
+                    <span class="rounded-full bg-white px-3 py-1.5">1. Upload Assets</span>
+                    <span class="rounded-full bg-white px-3 py-1.5">2. Review & Grouping</span>
+                    <span class="rounded-full bg-white px-3 py-1.5">3. Physical Routing</span>
                 </div>
             </div>
             <?php if(!$visionOnline): ?>
@@ -110,23 +120,15 @@
             <?php endif; ?>
         </div>
 
-        <div class="mb-5 flex gap-1 rounded-xl bg-gray-100 p-1" style="width: fit-content">
-            <button type="button" data-ai-tab-trigger="scan" class="rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">Batch Scan</button>
-            <button type="button" data-ai-tab-trigger="review" class="rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
-                Review & Grouping
-                <?php if($groupedDraftBooks->isNotEmpty()): ?>
-                    <span class="ml-2 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-semibold text-primary-700"><?php echo e($draftBooks->count()); ?></span>
-                <?php endif; ?>
-            </button>
-        </div>
 
-        <div data-ai-tab-panel="scan">
+
+        <div id="scan-upload-section">
             <form method="POST" action="<?php echo e(route('books.import.ai-batch-scan')); ?>" enctype="multipart/form-data" class="space-y-5" id="batch-scan-form" data-status-url-template="<?php echo e(route('books.import.ai-batch-status', ['token' => '__TOKEN__'])); ?>" data-cancel-url-template="<?php echo e(route('books.import.ai-batch-cancel', ['token' => '__TOKEN__'])); ?>">
                 <?php echo csrf_field(); ?>
                 <div class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
                     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
                         <div>
-                            <h3 class="text-lg font-bold text-gray-900">Batch Scan Form</h3>
+                            <h3 class="text-lg font-bold text-gray-900">Upload Assets</h3>
                             <p class="mt-1 text-sm text-gray-500">Tambahkan banyak buku sekaligus lalu scan dalam satu proses.</p>
                         </div>
                         <div class="flex flex-wrap gap-2">
@@ -214,23 +216,24 @@
                             <button type="button" id="batch-cancel-btn" class="hidden inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">Batalkan Scan</button>
                             <button type="submit" id="batch-scan-submit" class="inline-flex items-center gap-2 rounded-xl bg-primary-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-800 disabled:cursor-not-allowed disabled:bg-gray-400" <?php if(!$visionOnline): echo 'disabled'; endif; ?>>
                                 <span class="scan-action-spinner scan-action-spinner-light hidden" id="batch-scan-submit-spinner"></span>
-                                <span id="batch-scan-submit-label">Jalankan Batch Scan AI</span>
+                                <span id="batch-scan-submit-label">Mulai Waterfall Scan</span>
                             </button>
                         </div>
                     </div>
                 </div>
             </form>
         </div>
+    </div>
 
-        <div data-ai-tab-panel="review" class="hidden">
+    <div data-tab-panel="review" class="hidden">
             <?php if($groupedDraftBooks->isNotEmpty()): ?>
                 <form method="POST" action="<?php echo e(route('books.import.ai-review-commit')); ?>" class="space-y-5">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="draft_token" value="<?php echo e($ai_scan_draft_token); ?>">
 
                     <div class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
-                        <h3 class="text-lg font-bold text-gray-900">Review Hasil Scan</h3>
-                        <p class="mt-1 text-sm text-gray-500">Setiap buku sudah dikelompokkan otomatis berdasarkan kategori. Rapikan data lalu pilih rack bila perlu.</p>
+                        <h3 class="text-lg font-bold text-gray-900">Review & Grouping</h3>
+                        <p class="mt-1 text-sm text-gray-500">Rapikan metadata hasil AI, kelompokkan kategori, lalu pilih rack sebagai langkah routing fisik sebelum commit.</p>
                     </div>
 
                     <?php $flatIndex = 0; ?>
@@ -353,134 +356,34 @@
         </div>
     </div>
 
-    <div data-tab-panel="manual" class="<?php echo e($hasManualErrors ? '' : 'hidden'); ?>">
+    
+    <div data-tab-panel="isbn" class="hidden">
+        <div class="mb-5 rounded-[1.4rem] border border-sky-100 bg-gradient-to-r from-sky-50 via-white to-indigo-50 px-5 py-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Continuous Looper</p>
+            <h2 class="mt-1 text-xl font-black tracking-tight text-gray-900">Scan ISBN beruntun — tiiit tiiit tiiit! 🔫</h2>
+            <p class="mt-2 text-sm text-gray-600">Scan ISBN → data otomatis ditarik → form reset → fokus kembali ke input. Tanpa sentuh mouse.</p>
+        </div>
+
         <?php if (isset($component)) { $__componentOriginal53747ceb358d30c0105769f8471417f6 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal53747ceb358d30c0105769f8471417f6 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.card','data' => []] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.card','data' => ['class' => 'mb-5']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('card'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes([]); ?>
-            <h2 class="section-title mb-4">Manual Book Entry</h2>
-            <form method="POST" action="<?php echo e(route('books.import.manual')); ?>" class="space-y-4">
-                <?php echo csrf_field(); ?>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div class="md:col-span-2">
-                        <label for="isbn-input" class="form-label">ISBN / Scan Input (optional)</label>
-                        <div class="mb-2 flex gap-2">
-                            <input id="isbn-input" name="isbn" value="<?php echo e(old('isbn')); ?>" type="text" class="form-input" placeholder="Scan or type ISBN">
-                            <button id="isbn-scan-btn" type="button" class="inline-flex items-center gap-1 rounded-lg border border-border bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200">Scan</button>
-                            <button id="isbn-lookup-btn" type="button" class="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-primary-50 hover:text-primary-700">Fetch</button>
-                        </div>
-                        <div id="qr-reader" class="hidden overflow-hidden rounded-xl border border-gray-200" style="width: 100%; max-width: 400px;"></div>
-                        <?php $__errorArgs = ['isbn'];
-$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
-if ($__bag->has($__errorArgs[0])) :
-if (isset($message)) { $__messageOriginal = $message; }
-$message = $__bag->first($__errorArgs[0]); ?>
-                            <p class="mt-1 text-xs text-red-600"><?php echo e($message); ?></p>
-                        <?php unset($message);
-if (isset($__messageOriginal)) { $message = $__messageOriginal; }
-endif;
-unset($__errorArgs, $__bag); ?>
-                        <p id="isbn-lookup-status" class="mt-1 text-xs text-gray-500"></p>
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <label for="ai-image-input" class="form-label">AI Book Scan (optional)</label>
-                        <div class="manual-scan-shell">
-                            <div class="grid gap-4">
-                                <div class="flex flex-col gap-3 xl:flex-row xl:items-end">
-                                    <div class="min-w-0 flex-1">
-                                        <input id="ai-image-input" type="file" class="form-input" accept=".jpg,.jpeg,.png,.webp,.avif,image/*" multiple>
-                                        <p class="mt-2 text-xs text-gray-500">Upload 1 gambar untuk front cover, atau 2 gambar dengan urutan front dulu lalu back cover.</p>
-                                    </div>
-                                    <div class="w-full xl:w-auto">
-                                        <select id="ai-scan-mode" class="form-input w-full min-w-[160px] xl:w-auto">
-                                            <option value="full">Mode: Full</option>
-                                            <option value="simple">Mode: Simple</option>
-                                        </select>
-                                    </div>
-                                    <button id="ai-scan-btn" type="button" class="scan-action-button inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-primary-50 hover:text-primary-700">
-                                        <span class="scan-action-spinner hidden" id="manual-ai-scan-spinner"></span>
-                                        <span id="manual-ai-scan-label">Scan with AI</span>
-                                    </button>
-                                </div>
-                                <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3">
-                                    <div class="flex flex-wrap items-center gap-2 text-xs">
-                                        <span class="rounded-full bg-white px-3 py-1 font-semibold text-gray-600" id="manual-ai-files-status">Belum ada gambar dipilih</span>
-                                        <span class="rounded-full bg-white px-3 py-1 font-semibold text-gray-600" id="manual-ai-source-status">Siap untuk analisis AI</span>
-                                    </div>
-                                    <p id="ai-scan-status" class="mt-3 text-xs text-gray-500">Pilih gambar untuk mulai scan AI dan autofill data buku.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label for="title-input" class="form-label">Title</label>
-                        <input id="title-input" name="title" value="<?php echo e(old('title')); ?>" type="text" class="form-input" required>
-                    </div>
-                    <div>
-                        <label for="author-input" class="form-label">Author</label>
-                        <input id="author-input" name="author" value="<?php echo e(old('author')); ?>" type="text" class="form-input" required>
-                    </div>
-                    <div>
-                        <label for="category-name-input" class="form-label">Category</label>
-                        <input list="category-list" id="category-name-input" name="category_name" value="<?php echo e(old('category_name')); ?>" type="text" class="form-input" required placeholder="Type or select category">
-                        <datalist id="category-list">
-                            <?php $__currentLoopData = $categories; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $category): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                <option value="<?php echo e($category->name); ?>"></option>
-                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
-                        </datalist>
-                    </div>
-                    <div>
-                        <label for="rack-id-input" class="form-label">Rack (optional)</label>
-                        <select id="rack-id-input" name="rack_id" class="form-input">
-                            <option value="">Auto Assign</option>
-                            <?php $__currentLoopData = $racks; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $rack): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                <option value="<?php echo e($rack->id); ?>" <?php if((string) old('rack_id') === (string) $rack->id): echo 'selected'; endif; ?>><?php echo e($rack->name); ?></option>
-                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
-                        </select>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label for="cover-url-input" class="form-label">Cover URL (optional)</label>
-                        <input id="cover-url-input" name="cover_url" value="<?php echo e(old('cover_url')); ?>" type="text" class="form-input" placeholder="https://... atau /storage/...">
-                        <div id="cover-preview-wrap" class="mt-3 <?php echo e(old('cover_url') ? '' : 'hidden'); ?>">
-                            <p id="cover-preview-caption" class="mb-1 text-xs font-medium text-gray-500">Cover preview</p>
-                            <img id="cover-preview-img" src="<?php echo e(old('cover_url') ?? ''); ?>" alt="Cover preview" class="h-52 w-36 rounded-lg border border-gray-200 bg-white object-contain p-2 shadow-sm">
-                        </div>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label for="description-input" class="form-label">Description (optional)</label>
-                        <textarea id="description-input" name="description" class="form-input h-24 text-justify"><?php echo e(old('description')); ?></textarea>
-                        <p id="description-source-note" class="mt-1 text-xs text-gray-500">Sumber deskripsi akan muncul di sini setelah ISBN lookup atau AI scan.</p>
-                    </div>
+<?php $component->withAttributes(['class' => 'mb-5']); ?>
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end">
+                <div class="flex-1">
+                    <label for="isbn-looper-input" class="form-label text-lg font-bold">ISBN Scanner</label>
+                    <input id="isbn-looper-input" type="text" class="form-input mt-2 text-xl font-mono tracking-widest" placeholder="Scan atau ketik ISBN lalu tekan Enter..." autofocus>
                 </div>
-
-                <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
-<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['type' => 'submit','variant' => 'success']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
-<?php $component->withName('button'); ?>
-<?php if ($component->shouldRender()): ?>
-<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
-<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
-<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
-<?php endif; ?>
-<?php $component->withAttributes(['type' => 'submit','variant' => 'success']); ?>Save Book <?php echo $__env->renderComponent(); ?>
-<?php endif; ?>
-<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
-<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
-<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
-<?php endif; ?>
-<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
-<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
-<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
-<?php endif; ?>
-            </form>
+                <button id="isbn-looper-fetch-btn" type="button" class="rounded-xl bg-sky-700 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-sky-600">
+                    Fetch ISBN
+                </button>
+            </div>
+            <p id="isbn-looper-status" class="mt-3 text-sm text-gray-500">Menunggu input ISBN...</p>
          <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
 <?php if (isset($__attributesOriginal53747ceb358d30c0105769f8471417f6)): ?>
@@ -491,6 +394,14 @@ unset($__errorArgs, $__bag); ?>
 <?php $component = $__componentOriginal53747ceb358d30c0105769f8471417f6; ?>
 <?php unset($__componentOriginal53747ceb358d30c0105769f8471417f6); ?>
 <?php endif; ?>
+
+        
+        <div id="isbn-looper-list" class="space-y-3"></div>
+
+        <div id="isbn-looper-empty" class="rounded-[1.5rem] border border-dashed border-gray-300 bg-white px-6 py-12 text-center">
+            <h3 class="text-xl font-black tracking-tight text-gray-900">Belum ada buku di-fetch</h3>
+            <p class="mt-2 text-sm text-gray-500">Mulai scan ISBN untuk menambahkan buku ke daftar review.</p>
+        </div>
     </div>
 
     <template id="ai-batch-item-template">
@@ -543,8 +454,6 @@ unset($__errorArgs, $__bag); ?>
         (() => {
             const tabTriggers = document.querySelectorAll('[data-tab-trigger]');
             const tabPanels = document.querySelectorAll('[data-tab-panel]');
-            const aiTabTriggers = document.querySelectorAll('[data-ai-tab-trigger]');
-            const aiTabPanels = document.querySelectorAll('[data-ai-tab-panel]');
             const activeClasses = ['bg-white', 'text-primary-800', 'shadow-sm', 'font-semibold'];
             const inactiveClasses = ['text-gray-500', 'hover:text-gray-700'];
 
@@ -556,17 +465,11 @@ unset($__errorArgs, $__bag); ?>
                     const isActive = trigger.getAttribute('data-tab-trigger') === name;
                     activeClasses.forEach((cls) => trigger.classList.toggle(cls, isActive));
                     inactiveClasses.forEach((cls) => trigger.classList.toggle(cls, !isActive));
-                });
-            };
-
-            const setAiTab = (name) => {
-                aiTabPanels.forEach((panel) => {
-                    panel.classList.toggle('hidden', panel.getAttribute('data-ai-tab-panel') !== name);
-                });
-                aiTabTriggers.forEach((trigger) => {
-                    const isActive = trigger.getAttribute('data-ai-tab-trigger') === name;
-                    activeClasses.forEach((cls) => trigger.classList.toggle(cls, isActive));
-                    inactiveClasses.forEach((cls) => trigger.classList.toggle(cls, !isActive));
+                    const dot = trigger.querySelector('span');
+                    if (dot) {
+                        dot.classList.toggle('bg-primary-700', isActive);
+                        dot.classList.toggle('bg-gray-300', !isActive);
+                    }
                 });
             };
 
@@ -577,15 +480,9 @@ unset($__errorArgs, $__bag); ?>
                 });
             });
 
-            aiTabTriggers.forEach((trigger) => {
-                trigger.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    setAiTab(trigger.getAttribute('data-ai-tab-trigger'));
-                });
-            });
-
-            setTopTab(<?php echo json_encode($hasManualErrors ? 'manual' : 'ai', 15, 512) ?>);
-            setAiTab(<?php echo json_encode($groupedDraftBooks->isNotEmpty() && $aiDraftFinished ? 'review' : 'scan', 15, 512) ?>);
+            // Auto-select tab based on state
+            const autoTab = <?php echo json_encode($groupedDraftBooks->isNotEmpty() && $aiDraftFinished ? 'review' : 'ai', 15, 512) ?>;
+            setTopTab(autoTab);
 
             const batchList = document.getElementById('ai-batch-list');
             const batchTemplate = document.getElementById('ai-batch-item-template');
@@ -730,7 +627,7 @@ unset($__errorArgs, $__bag); ?>
                     batchScanSubmitSpinner.classList.toggle('hidden', !loading);
                 }
                 if (batchScanSubmitLabel) {
-                    batchScanSubmitLabel.textContent = loading ? 'Memasukkan ke antrian...' : 'Jalankan Batch Scan AI';
+                    batchScanSubmitLabel.textContent = loading ? 'Memasukkan ke antrian...' : 'Mulai Waterfall Scan';
                 }
             };
 
@@ -1277,6 +1174,80 @@ unset($__errorArgs, $__bag); ?>
                     qrReaderElement.classList.add('hidden');
                     scanButton.textContent = 'Scan';
                 }
+            });
+        })();
+
+        // ISBN Continuous Looper
+        (() => {
+            const input = document.getElementById('isbn-looper-input');
+            const fetchBtn = document.getElementById('isbn-looper-fetch-btn');
+            const status = document.getElementById('isbn-looper-status');
+            const list = document.getElementById('isbn-looper-list');
+            const empty = document.getElementById('isbn-looper-empty');
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+            const lookupUrl = <?php echo json_encode(route('books.import.isbn-lookup'), 15, 512) ?>;
+            let fetchCount = 0;
+
+            if (!input || !fetchBtn) return;
+
+            const doFetch = async () => {
+                const isbn = input.value.trim();
+                if (!isbn) return;
+
+                fetchBtn.disabled = true;
+                fetchBtn.textContent = '⏳...';
+                status.textContent = 'Mencari data ISBN: ' + isbn + '...';
+                status.className = 'mt-3 text-sm text-gray-500';
+
+                try {
+                    const res = await fetch(lookupUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: JSON.stringify({ isbn }),
+                    });
+                    const data = await res.json();
+
+                    if (res.ok && data.title) {
+                        fetchCount++;
+                        const card = document.createElement('div');
+                        card.className = 'rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 flex items-start gap-4';
+                        card.innerHTML = `
+                            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-lg font-black text-emerald-700">${fetchCount}</div>
+                            <div class="min-w-0 flex-1">
+                                <h4 class="text-base font-bold text-gray-900">${data.title}</h4>
+                                <p class="mt-1 text-sm text-gray-600">${data.author || '-'}</p>
+                                <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                                    <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-gray-600">ISBN: ${isbn}</span>
+                                    ${data.category ? '<span class="rounded-full bg-white px-2.5 py-1 font-semibold text-sky-700">' + data.category + '</span>' : ''}
+                                </div>
+                            </div>
+                        `;
+                        list.prepend(card);
+                        empty.classList.add('hidden');
+
+                        status.textContent = '✅ Berhasil! ' + fetchCount + ' buku terfetch. Lanjutkan scan...';
+                        status.className = 'mt-3 text-sm font-semibold text-emerald-700';
+
+                        // THE LOOP: Reset & refocus
+                        input.value = '';
+                        input.focus();
+                    } else {
+                        status.textContent = '❌ ' + (data.message || 'ISBN tidak ditemukan: ' + isbn);
+                        status.className = 'mt-3 text-sm font-semibold text-red-600';
+                        input.select();
+                    }
+                } catch (err) {
+                    status.textContent = '❌ Gagal menghubungi server.';
+                    status.className = 'mt-3 text-sm font-semibold text-red-600';
+                }
+
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = 'Fetch ISBN';
+            };
+
+            fetchBtn.onclick = doFetch;
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); doFetch(); }
             });
         })();
     </script>

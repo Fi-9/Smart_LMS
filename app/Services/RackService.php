@@ -58,6 +58,7 @@ class RackService
         $booksByPosition = $rack->books->groupBy('position_code');
         $grid = [];
         $capacity = $rack->capacity_per_slot ?? 1;
+        $slotCategories = $rack->slotCategoryMap();
 
         foreach ($this->generatePositions($rack->rows, $rack->columns) as $positionCode) {
             $books = $booksByPosition->get($positionCode, collect());
@@ -69,6 +70,9 @@ class RackService
                 'is_full' => $count >= $capacity,
                 'count' => $count,
                 'capacity' => $capacity,
+                'slot_category_id' => isset($slotCategories[$positionCode]) && is_numeric($slotCategories[$positionCode])
+                    ? (int) $slotCategories[$positionCode]
+                    : null,
                 'books' => $books->map(
                     fn (Book $book): array => ['id' => $book->id, 'title' => $book->title]
                 )->toArray(),
@@ -85,6 +89,7 @@ class RackService
         $booksByPosition = $rack->books->groupBy('position_code');
         $matrix = [];
         $capacity = $rack->capacity_per_slot ?? 1;
+        $slotCategories = $rack->slotCategoryMap();
 
         for ($rowIndex = 0; $rowIndex < $rack->rows; $rowIndex++) {
             $rowLabel = chr(65 + $rowIndex);
@@ -101,6 +106,9 @@ class RackService
                     'is_full' => $count >= $capacity,
                     'count' => $count,
                     'capacity' => $capacity,
+                    'slot_category_id' => isset($slotCategories[$positionCode]) && is_numeric($slotCategories[$positionCode])
+                        ? (int) $slotCategories[$positionCode]
+                        : null,
                     'books' => $books->map(
                         fn (Book $book): array => ['id' => $book->id, 'title' => $book->title]
                     )->toArray(),

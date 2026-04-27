@@ -1,66 +1,138 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 📚 Smart Library v2.0 — SMK Mustaqbal
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistem Manajemen Perpustakaan Pintar berbasis AI untuk SMK Mustaqbal.
+Dibangun dengan **Laravel 13**, **Tailwind CSS**, **Alpine.js**, dan **Ollama AI** (Qwen3-VL Vision + Qwen 2.5 Text).
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## ✨ Fitur Utama
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+| Menu | Deskripsi |
+|------|-----------|
+| **Dashboard** | Ringkasan statistik koleksi, rak, peminjaman, dan performa AI pipeline |
+| **Search Book** | Katalog buku dengan master-detail layout, cover card, QR preview, dan rack mini map |
+| **Library Map** | Peta digital perpustakaan: Lobby (Ruangan) → Hallway (Rak) → Shelf (Grid Slot) — drill-down navigation |
+| **Categories** | Manajemen label/kategori buku (CRUD) |
+| **Smart Ingest** | 2 jalur automasi: **AI Scan** (Qwen3-VL cover) dan **ISBN Scan** (Continuous Looper barcode gun) → Review & Routing |
+| **Borrowing** | Sirkulasi peminjaman & pengembalian buku dengan status tracking |
+| **Members** | Manajemen anggota perpustakaan |
+| **Settings** | Konfigurasi AI runtime, websearch provider, branding & QR, dan akun |
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 🤖 AI Pipeline
 
-## Learning Laravel
+Smart Library menggunakan **Ollama** (local inference) dengan arsitektur pipeline:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+```
+Upload Cover → Qwen3-VL Vision (extract metadata)
+                    ↓
+            Google Books API (enrich)
+                    ↓
+            OpenLibrary (fallback)
+                    ↓
+            Tavily Web Search (last resort)
+                    ↓
+            Review & Grouping → Physical Routing → Commit
+```
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+- **Async Batch Scan**: Upload banyak buku sekaligus, diproses via queue worker
+- **Hybrid ISBN Lookup**: Google Books → OpenLibrary → Tavily web extraction
+- **Per-field Source Labels**: Setiap field metadata menampilkan asal datanya (AI Cover, Google Books, Web Resmi, dll)
+- **Fuzzy Title Search**: OCR typo correction (T↔I, B↔R, dst)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## 🖥️ Tech Stack
 
-## Laravel Sponsors
+| Layer | Teknologi |
+|-------|-----------|
+| Backend | Laravel 13 (PHP 8.4) |
+| Frontend | Blade + Tailwind CSS + Alpine.js |
+| AI Vision | Ollama + Qwen3-VL-8B |
+| AI Text | Ollama + Qwen 2.5 14B |
+| Websearch | Tavily API |
+| Book API | Google Books API, OpenLibrary API |
+| Database | MySQL |
+| Queue | Laravel Queue (database driver) |
+| QR Code | endroid/qr-code (PNG/SVG) |
+| Build | Vite |
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## 🎨 Tema UI
 
-### Premium Partners
+Smart Library v2.0 menggunakan **tema Lumina** dengan dual mode:
+- **Light Mode**: Abu terang bersih dengan aksen Emerald
+- **Dark Mode**: Slate gelap dengan aksen Emerald
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+Tema disimpan di `localStorage` dan tersinkron otomatis.
 
-## Contributing
+## 🚀 Instalasi
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+# Clone repository
+git clone <repo-url> smart-library
+cd smart-library
 
-## Code of Conduct
+# Install dependencies
+composer install
+npm install
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+# Setup environment
+cp .env.example .env
+php artisan key:generate
 
-## Security Vulnerabilities
+# Database
+php artisan migrate
+php artisan db:seed --class=LibraryDemoSeeder
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+# Build frontend
+npm run build
 
-## License
+# Start server
+php artisan serve
+npm run dev
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+# Start queue worker (untuk AI batch scan)
+php artisan queue:work --queue=ai-scan
+```
+
+## ⚙️ Konfigurasi AI
+
+1. Install [Ollama](https://ollama.com/) dan pull model:
+   ```bash
+   ollama pull qwen3-vl:8b
+   ollama pull qwen2.5:14b
+   ```
+2. Buka menu **Settings** di aplikasi
+3. Atur Ollama Base URL, pilih model Vision dan Text
+4. (Opsional) Masukkan API key Google Books dan Tavily untuk enrichment
+
+## 📁 Struktur Direktori Penting
+
+```
+├── Http/Controllers/Web/    # Controller halaman admin
+├── Models/                  # Book, Category, Rack, Room, Borrowing, User, AppSetting
+├── Services/                # AI Pipeline, QR, ISBN Lookup, Borrowing
+├── Jobs/                    # Async batch scan job
+└── Enums/                   # BorrowingStatus, UserRole
+
+resources/views/
+├── layouts/app.blade.php    # Shell utama + sidebar Lumina
+├── dashboard/               # Halaman dashboard
+├── books/                   # Search Book + Smart Ingest (AI Scan + ISBN Looper)
+├── racks/                   # Rack Detail (Explorer, Table Mode, Manual Input)
+├── rooms/                   # Room Detail (Hallway)
+├── categories/              # Categories
+├── borrowings/              # Borrowing
+├── members/                 # Members
+├── settings/                # Settings
+└── qr/                      # QR sticker & print
+
+docs/
+├── change_log.md            # Log perubahan kode
+└── implementation_audit_*.md
+```
+
+## 📋 Changelog
+
+Lihat [docs/change_log.md](docs/change_log.md) untuk riwayat perubahan lengkap.
+
+## 📄 License
+
+Proyek internal SMK Mustaqbal.

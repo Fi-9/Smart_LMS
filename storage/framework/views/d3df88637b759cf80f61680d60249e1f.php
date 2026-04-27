@@ -178,7 +178,7 @@
                             
                             <div class="flex shrink-0 flex-col gap-1 opacity-40 transition-opacity duration-200 group-hover:opacity-100">
                                 <?php if($book->rack_id): ?>
-                                    <a href="<?php echo e(route('racks.show', $book->rack_id)); ?>" title="Move to rack" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">📍</a>
+                                    <a href="<?php echo e(route('rooms.show', $book->rack->room_id)); ?>" title="Lihat di Ruangan" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">📍</a>
                                 <?php endif; ?>
                                 <a href="<?php echo e(route('qr.print', ['selected_ids' => [$book->id]])); ?>" target="_blank" title="Print QR" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">🔳</a>
                                 <a href="<?php echo e(route('books.web.show', $book->id)); ?>" title="Edit" class="rounded-md bg-gray-100 p-1.5 text-xs text-gray-600 transition hover:bg-primary-100 hover:text-primary-700" onclick="event.stopPropagation()">✏️</a>

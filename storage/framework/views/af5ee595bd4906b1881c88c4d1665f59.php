@@ -129,7 +129,15 @@
                                     <p class="font-semibold text-gray-900"><?php echo e($borrowing->book->title); ?></p>
                                     <p class="text-xs text-gray-500"><?php echo e($borrowing->book->author); ?></p>
                                 </td>
-                                <td class="p-3 font-medium text-gray-800"><?php echo e($borrowing->borrower_name); ?></td>
+                                <td class="p-3">
+                                    <?php if($borrowing->member): ?>
+                                        <a href="<?php echo e(route('members.show', $borrowing->member)); ?>" class="font-medium text-primary-700 hover:underline"><?php echo e($borrowing->borrower_display); ?></a>
+                                        <p class="text-xs text-gray-500"><?php echo e($borrowing->member->nis); ?></p>
+                                    <?php else: ?>
+                                        <span class="font-medium text-gray-800"><?php echo e($borrowing->borrower_display); ?></span>
+                                        <p class="text-xs text-amber-600">Unlinked</p>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="p-3 text-gray-600"><?php echo e($borrowing->borrowed_at->format('d M Y')); ?></td>
                                 <td class="p-3">
                                     <span class="<?php echo e($isLate ? 'font-semibold text-red-600' : 'text-gray-600'); ?>">

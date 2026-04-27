@@ -178,6 +178,13 @@
                     Select All
                 </label>
                 <a
+                    href="<?php echo e(route('qr.print', ['rack_id' => $selected_rack_id, 'category_id' => $selected_category_id, 'layout' => 'tj103'])); ?>"
+                    target="_blank"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+                >
+                    🖨️ Print T&J 103
+                </a>
+                <a
                     href="<?php echo e(route('qr.print', ['rack_id' => $selected_rack_id, 'category_id' => $selected_category_id])); ?>"
                     target="_blank"
                     class="inline-flex items-center gap-1.5 rounded-lg bg-primary-800 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
@@ -211,6 +218,26 @@
 <?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
 <?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
 <?php endif; ?>
+                <?php if (isset($component)) { $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.button','data' => ['id' => 'print-tj103-selected-btn','type' => 'button','class' => 'bg-indigo-600 hover:bg-indigo-700 text-white','disabled' => true,'onclick' => 'document.getElementById(\'layout-input\').value=\'tj103\'; document.getElementById(\'print-selected-form\').submit(); document.getElementById(\'layout-input\').value=\'\';']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('button'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['id' => 'print-tj103-selected-btn','type' => 'button','class' => 'bg-indigo-600 hover:bg-indigo-700 text-white','disabled' => true,'onclick' => 'document.getElementById(\'layout-input\').value=\'tj103\'; document.getElementById(\'print-selected-form\').submit(); document.getElementById(\'layout-input\').value=\'\';']); ?>🖨️ Print T&J 103 <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $attributes = $__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__attributesOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561)): ?>
+<?php $component = $__componentOriginald0f1fd2689e4bb7060122a5b91fe8561; ?>
+<?php unset($__componentOriginald0f1fd2689e4bb7060122a5b91fe8561); ?>
+<?php endif; ?>
+                <input type="hidden" name="layout" id="layout-input" value="">
                 <span id="selected-count" class="text-xs font-medium text-gray-500">0 selected</span>
             </div>
 
@@ -268,6 +295,8 @@
             const updateSelectedState = () => {
                 const selectedCount = Array.from(checkboxes).filter((cb) => cb.checked).length;
                 printSelectedButton.disabled = selectedCount === 0;
+                const printTj103Btn = document.getElementById('print-tj103-selected-btn');
+                if (printTj103Btn) printTj103Btn.disabled = selectedCount === 0;
                 selectedCountNode.textContent = `${selectedCount} selected`;
             };
 

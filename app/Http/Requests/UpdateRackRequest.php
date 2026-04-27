@@ -23,7 +23,7 @@ class UpdateRackRequest extends FormRequest
             'rows' => ['required', 'integer', 'min:1', 'max:26'],
             'columns' => ['required', 'integer', 'min:1', 'max:10'],
             'capacity_per_slot' => ['required', 'integer', 'min:1', 'max:100'],
-            'column_category' => ['nullable', 'string', 'max:100'],
+            'room_id' => ['nullable', 'integer', 'exists:rooms,id'],
         ];
     }
 }
