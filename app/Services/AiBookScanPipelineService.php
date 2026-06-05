@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 class AiBookScanPipelineService
 {
     public function __construct(
-        private readonly OllamaService $ollamaService,
+        private readonly GeminiService $geminiService,
         private readonly IsbnLookupService $isbnLookupService,
         private readonly WebBookDescriptionService $webBookDescriptionService,
         private readonly CoverImageService $coverImageService,
@@ -25,7 +25,7 @@ class AiBookScanPipelineService
         \Illuminate\Support\Facades\Log::channel('ai_scan')->info("=== START AI SCAN ===");
 
         $visionStart = microtime(true);
-        $vision = $this->ollamaService->extractBookSignals($images);
+        $vision = $this->geminiService->extractBookSignals($images);
         $visionMs = round((microtime(true) - $visionStart) * 1000);
         \Illuminate\Support\Facades\Log::channel('ai_scan')->info("⏱️ Vision selesai dalam {$visionMs}ms");
 
@@ -694,7 +694,7 @@ class AiBookScanPipelineService
         }
 
         try {
-            $translated = $this->ollamaService->translateTextToIndonesian($text);
+            $translated = $this->geminiService->translateTextToIndonesian($text);
         } catch (\RuntimeException $e) {
             \Illuminate\Support\Facades\Log::error('[Pipeline] Translation failed, returning original text', [
                 'error' => $e->getMessage(),

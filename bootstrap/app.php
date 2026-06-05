@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureUserHasRole::class,
+            'staff.scanner' => \App\Http\Middleware\RedirectStaffToScanner::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

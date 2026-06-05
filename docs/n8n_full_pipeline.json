@@ -1,0 +1,55 @@
+{
+  "name": "SmartLMS Full Pipeline v2",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "smartlms-vision", "responseMode": "lastNode", "options": { "rawBody": true, "binaryData": true, "binaryPropertyName": "data" } },
+      "id": "wh", "name": "📥 Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [250, 300]
+    },
+    {
+      "parameters": { "jsCode": "// Get uploaded image binary data\nconst items = $input.all();\nconst first = items[0];\nconst binary = first.binary;\n\n// Find the image field\nconst imgKey = Object.keys(binary).find(k => k !== 'data' && (binary[k].mimeType?.startsWith('image/')))\n  || Object.keys(binary).find(k => binary[k].mimeType?.startsWith('image/'))\n  || Object.keys(binary)[0];\n\nconst img = binary[imgKey];\nif (!img) throw new Error('No image found in webhook payload');\n\nreturn items.map(item => ({\n  json: {\n    binaryKey: imgKey,\n    mimeType: img.mimeType || 'image/jpeg'\n  },\n  binary: item.binary\n}));" },
+      "id": "cd1", "name": "🔧 Get Image Binary", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [450, 300]
+    },
+    {
+      "parameters": { "text": "={{ $json.chatInput }}", "options": { "systemMessage": "Kamu adalah pustakawan AI. Analisis cover buku dan ekstrak metadata.\n\nBalas HANYA dengan JSON (tanpa markdown, tanpa penjelasan):\n{\n  \"isbn\": \"9786020332116 atau kosong\",\n  \"title\": \"judul buku\",\n  \"author\": \"nama penulis\",\n  \"publisher\": \"nama penerbit\",\n  \"category\": \"kategori buku\"\n}\n\nISBN selalu diformat tanpa strip/spasi. Jika field tidak terbaca, isi string kosong \"\"." } },
+      "id": "llm", "name": "🤖 Gemini Vision", "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "notes": "PAKE: Google Gemini Chat Model node, bukan agent.\nIni placeholder — ganti manual di UI n8n."
+    },
+    {
+      "parameters": { "jsCode": "// ⚠️ GANTI NODE DIATAS DENGAN:\n// 1. Tambah node \"Google Gemini Chat Model\" (bukan agent)\n// 2. Connect credential Gemini API\n// 3. Set model: gemini-2.5-flash\n// 4. Prompt: system message di code node ini\n//\n// Untuk sekarang, parse Gemini response dari node LLM\nconst response = $input.first().json;\nlet text = response.output || response.text || '';\n\n// Bersihkan markdown fences\ntext = text.replace(/```json\\n?|```/g, '').trim();\n\nlet data = {};\ntry {\n  data = JSON.parse(text);\n} catch(e) {\n  // Coba ekstrak JSON dari text\n  const m = text.match(/\\{[\\s\\S]*\\}/);\n  if (m) try { data = JSON.parse(m[0]); } catch(e2) {}\n}\n\nconst isbn = (data.isbn || '').replace(/[^0-9Xx]/g, '');\n\nreturn {\n  isbn: isbn || null,\n  title: data.title || null,\n  author: data.author || null,\n  publisher: data.publisher || null,\n  category: data.category || null\n};" },
+      "id": "cd2", "name": "📝 Parse Result", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [850, 300]
+    },
+    {
+      "parameters": { "jsCode": "const data = $input.first().json;\nconst isbn = data.isbn;\nconst title = data.title;\n\n// Get front cover from webhook\nlet coverUrl = null;\n\nreturn {\n  _gemini: data,\n  apiCalls: [\n    isbn ? { name: 'google', url: `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}` } : null,\n    isbn ? { name: 'openlib', url: `https://openlibrary.org/isbn/${isbn}.json` } : null,\n    (!isbn && title) ? { name: 'google_title', url: `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent('intitle:' + title)}&maxResults=1` } : null,\n    (!isbn && title) ? { name: 'openlib_title', url: `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&limit=1` } : null,\n  ].filter(Boolean)\n};" },
+      "id": "cd3", "name": "📤 Prepare Lookups", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1050, 300]
+    },
+    {
+      "parameters": { "method": "GET", "url": "={{ $json.apiCalls[0].url }}", "options": { "timeout": 15000 } },
+      "id": "http1", "name": "📚 Google Books", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1250, 200]
+    },
+    {
+      "parameters": { "method": "GET", "url": "={{ $json.apiCalls[1].url }}", "options": { "timeout": 15000 } },
+      "id": "http2", "name": "📚 OpenLibrary", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1250, 400]
+    },
+    {
+      "parameters": { "jsCode": "// Merge: Gemini + Google Books + OpenLibrary\nconst all = $input.all();\nconst gemini = all[0]?.json?._gemini || {};\nconst googleRaw = all.find(i => i.json?.items && !i.json?._gemini && !i.json?.apiCalls)?.json;\nconst olRaw = all.find(i => (i.json?.title || i.json?.publishers) && !i.json?._gemini)?.json;\nconst olSearch = all.find(i => i.json?.docs && !i.json?._gemini)?.json;\n\n// Parse Google\nlet g = {};\nif (googleRaw?.items?.length) {\n  const vi = googleRaw.items[0].volumeInfo || {};\n  g = {\n    title: vi.title, author: (vi.authors||[]).join(', '),\n    publisher: vi.publisher, year: vi.publishedDate ? parseInt(vi.publishedDate.substring(0,4)) : null,\n    desc: vi.description, category: vi.categories?.[0],\n    cover: vi.imageLinks?.thumbnail?.replace('http:','https:'), lang: vi.language\n  };\n}\n\n// Parse OpenLibrary direct\nlet o = {};\nif (olRaw?.title) {\n  o = {\n    title: olRaw.title, author: olRaw.authors?.map(a=>a.name||a).join(', '),\n    publisher: olRaw.publishers?.[0], year: olRaw.publish_date ? parseInt(olRaw.publish_date.substring(0,4)) : null,\n    cover: olRaw.covers?.[0] ? `https://covers.openlibrary.org/b/id/${olRaw.covers[0]}-M.jpg` : null\n  };\n}\n\n// Parse OpenLibrary search\nif (olSearch?.docs?.length) {\n  const d = olSearch.docs[0];\n  o = {\n    title: d.title || o.title, author: d.author_name?.join(', ') || o.author,\n    publisher: d.publisher?.[0] || o.publisher, year: d.first_publish_year || o.year,\n    cover: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : o.cover\n  };\n}\n\nconst pick = (a,b,c) => a || b || c || null;\n\nreturn {\n  found: true,\n  book: {\n    title: pick(g.title, o.title, gemini.title) || '',\n    author: pick(g.author, o.author, gemini.author) || '',\n    isbn: gemini.isbn || '',\n    publisher: pick(g.publisher, o.publisher, gemini.publisher) || '',\n    published_year: pick(g.year, o.year, null),\n    description: g.desc || '',\n    category: pick(g.category, null, gemini.category) || '',\n    cover_url: pick(g.cover, o.cover, null) || ''\n  },\n  sources: { google: !!Object.keys(g).filter(k=>g[k]).length, openlibrary: !!Object.keys(o).filter(k=>o[k]).length, gemini: true }\n};" },
+      "id": "cd4", "name": "🔗 Merge → JSON", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1450, 300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": {} },
+      "id": "resp", "name": "✅ Return", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1650, 300]
+    }
+  ],
+  "connections": {
+    "📥 Webhook": { "main": [[{"node":"🔧 Get Image Binary","type":"main","index":0}]] },
+    "🔧 Get Image Binary": { "main": [[{"node":"🤖 Gemini Vision","type":"main","index":0}]] },
+    "🤖 Gemini Vision": { "main": [[{"node":"📝 Parse Result","type":"main","index":0}]] },
+    "📝 Parse Result": { "main": [[{"node":"📤 Prepare Lookups","type":"main","index":0}]] },
+    "📤 Prepare Lookups": { "main": [[{"node":"📚 Google Books","type":"main","index":0},{"node":"📚 OpenLibrary","type":"main","index":0}]] },
+    "📚 Google Books": { "main": [[{"node":"🔗 Merge → JSON","type":"main","index":0}]] },
+    "📚 OpenLibrary": { "main": [[{"node":"🔗 Merge → JSON","type":"main","index":0}]] },
+    "🔗 Merge → JSON": { "main": [[{"node":"✅ Return","type":"main","index":0}]] }
+  },
+  "settings": {}, "staticData": null, "pinData": {}, "versionId": "2.0.0", "active": false, "tags": []
+}

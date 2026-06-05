@@ -13,25 +13,22 @@ class AiInfrastructureStatusTest extends TestCase
 
     public function test_ai_status_command_reports_runtime_and_connectivity(): void
     {
-        Config::set('services.ollama.base_url', 'http://127.0.0.1:11434');
-        Config::set('services.ollama.vision_model', 'gemma4:26b');
-        Config::set('services.ollama.text_model', 'gemma4:26b');
-        Config::set('services.ollama.web_model', 'gemma4:26b');
+        Config::set('services.n8n.base_url', 'http://127.0.0.1:5678');
+        Config::set('services.n8n.api_key', 'n8n-secret');
+        Config::set('services.gemini.model', 'gemini-2.5-flash');
+        Config::set('services.gemini.vision_model', 'gemini-2.5-flash');
         Config::set('services.websearch.enabled', false);
-        Config::set('services.websearch.base_url', '');
         Config::set('services.ai_runtime.default_scan_mode', 'auto');
 
         Http::fake([
-            'http://127.0.0.1:11434/api/tags' => Http::response([
-                'models' => [
-                    ['name' => 'gemma4:26b'],
-                ],
+            'http://127.0.0.1:5678/healthz' => Http::response([
+                'status' => 'ok',
             ], 200),
         ]);
 
         $this->artisan('ai:status')
             ->expectsOutputToContain('AI Runtime Summary')
-            ->expectsOutputToContain('gemma4:26b')
+            ->expectsOutputToContain('gemini-2.5-flash')
             ->expectsOutputToContain('Connectivity Checks')
             ->expectsOutputToContain('Recommended batch scan mode: SIMPLE')
             ->assertExitCode(0);
@@ -39,24 +36,18 @@ class AiInfrastructureStatusTest extends TestCase
 
     public function test_ai_status_recommends_full_when_websearch_is_enabled(): void
     {
-        Config::set('services.ollama.base_url', 'http://127.0.0.1:11434');
-        Config::set('services.ollama.vision_model', 'gemma4-id:26b');
-        Config::set('services.ollama.text_model', 'gemma4-id:26b');
-        Config::set('services.ollama.web_model', 'gemma4-id:26b');
+        Config::set('services.n8n.base_url', 'http://127.0.0.1:5678');
+        Config::set('services.n8n.api_key', 'n8n-secret');
+        Config::set('services.gemini.model', 'gemini-2.5-flash');
+        Config::set('services.gemini.vision_model', 'gemini-2.5-flash');
         Config::set('services.websearch.enabled', true);
-        Config::set('services.websearch.base_url', 'https://search.local');
         Config::set('services.tavily.api_key', 'tvly-secret');
-        Config::set('services.tavily.base_url', 'https://search.local');
+        Config::set('services.tavily.base_url', 'https://api.tavily.com');
         Config::set('services.ai_runtime.default_scan_mode', 'auto');
 
         Http::fake([
-            'http://127.0.0.1:11434/api/tags' => Http::response([
-                'models' => [
-                    ['name' => 'gemma4-id:26b'],
-                ],
-            ], 200),
-            'https://search.local/search*' => Http::response([
-                'results' => [],
+            'http://127.0.0.1:5678/healthz' => Http::response([
+                'status' => 'ok',
             ], 200),
         ]);
 

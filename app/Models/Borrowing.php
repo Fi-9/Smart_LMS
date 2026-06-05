@@ -21,9 +21,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property-read Book $book
  * @property-read Member|null $member
  */
+use Illuminate\Database\Eloquent\SoftDeletes;
+
 class Borrowing extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'book_id',
@@ -42,6 +44,28 @@ class Borrowing extends Model
         'due_date' => 'datetime',
         'returned_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function ($model) {
+            app(\App\Services\AuditLogService::class)->log('create', $model->getTable(), (string) $model->id, null, $model->toArray());
+        });
+
+        static::updated(function ($model) {
+            $old = array_intersect_key($model->getOriginal(), $model->getDirty());
+            $new = $model->getDirty();
+            app(\App\Services\AuditLogService::class)->log('update', $model->getTable(), (string) $model->id, $old, $new);
+        });
+
+        static::deleted(function ($model) {
+            $action = method_exists($model, 'isForceDeleting') && $model->isForceDeleting() ? 'force_delete' : 'delete';
+            app(\App\Services\AuditLogService::class)->log($action, $model->getTable(), (string) $model->id, $model->toArray(), null);
+        });
+
+        static::restored(function ($model) {
+            app(\App\Services\AuditLogService::class)->log('restore', $model->getTable(), (string) $model->id, null, $model->toArray());
+        });
+    }
 
     public function book(): BelongsTo
     {

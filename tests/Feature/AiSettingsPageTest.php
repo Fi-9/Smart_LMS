@@ -17,7 +17,7 @@ class AiSettingsPageTest extends TestCase
         parent::setUp();
 
         Http::fake([
-            '*' => Http::response(['models' => []], 200),
+            '*' => Http::response(['status' => 'ok'], 200),
         ]);
     }
 
@@ -29,7 +29,7 @@ class AiSettingsPageTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('AI Settings');
-        $response->assertSee('Ollama Runtime');
+        $response->assertSee('School Identity');
         $response->assertSee('Tavily');
     }
 
@@ -39,12 +39,8 @@ class AiSettingsPageTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('settings.update'), [
             'google_books_api_key' => 'google-secret',
-            'ollama_base_url' => 'http://127.0.0.1:11434',
-            'ollama_vision_model' => 'gemma4:26b',
-            'ollama_text_model' => 'gemma4-id:26b',
-            'ollama_web_model' => 'gemma4-id:26b',
-            'ollama_timeout' => 240,
-            'ollama_connect_timeout' => 10,
+            'n8n_base_url' => 'http://127.0.0.1:5678',
+            'n8n_api_key' => 'n8n-secret',
             'websearch_enabled' => '1',
             'tavily_api_key' => 'tvly-secret',
             'tavily_base_url' => 'https://api.tavily.com',
@@ -55,7 +51,7 @@ class AiSettingsPageTest extends TestCase
         ]);
 
         $response->assertRedirect(route('settings.index'));
-        $this->assertDatabaseHas('app_settings', ['key' => 'ai.ollama.base_url']);
+        $this->assertDatabaseHas('app_settings', ['key' => 'ai.n8n.base_url', 'value' => 'http://127.0.0.1:5678']);
         $this->assertDatabaseHas('app_settings', ['key' => 'ai.websearch.tavily_api_key']);
         $this->assertDatabaseHas('app_settings', ['key' => 'ai.scan.default_mode', 'value' => 'full']);
     }

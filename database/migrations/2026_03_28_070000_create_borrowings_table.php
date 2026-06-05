@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('status')->default('borrowed');
             $table->string('created_by')->default('admin');
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index(['book_id', 'status']);
             $table->index('status');

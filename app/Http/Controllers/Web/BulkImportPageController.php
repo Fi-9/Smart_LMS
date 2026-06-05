@@ -12,6 +12,7 @@ use App\Http\Requests\ScanBookImagesRequest;
 use App\Http\Requests\StoreManualBookRequest;
 use App\Jobs\ProcessAiBatchScanBook;
 use App\Models\Category;
+use App\Models\BookInbox;
 use App\Models\Rack;
 use App\Services\AiBatchScanDraftService;
 use App\Services\AiScanObservabilityService;
@@ -22,6 +23,7 @@ use App\Services\BulkImportService;
 use App\Services\IsbnLookupService;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -392,8 +394,19 @@ class BulkImportPageController extends Controller
                     'category_id' => $category->id,
                 ];
 
-                $this->bookService->createManual($attributes);
+                $book = $this->bookService->createManual($attributes);
                 $imported++;
+
+                // Save raw AI Scan Result to the ai_scan_results table
+                $draftBook = collect($draft['books'] ?? [])->firstWhere('scan_id', $bookPayload['scan_id']);
+                if ($draftBook) {
+                    \App\Models\AiScanResult::query()->create([
+                        'book_id' => $book->id,
+                        'ocr_result' => $draftBook,
+                        'confidence' => 0.90,
+                        'model_name' => config('services.gemini.model') ?: 'gemini-2.5-flash',
+                    ]);
+                }
             } catch (Throwable $e) {
                 $skipped++;
                 $reason = $e->getMessage();
@@ -435,5 +448,45 @@ class BulkImportPageController extends Controller
         $trimmed = trim($value);
 
         return $trimmed !== '' ? $trimmed : null;
+    }
+    /**
+     * Route approved inbox books to physical racks.
+     */
+    public function routeBooks(Request $request): RedirectResponse
+    {
+        $bookIds = $request->input('book_ids', []);
+        $rackIds = $request->input('rack_ids', []);
+        $positionCodes = $request->input('position_codes', []);
+
+        if (empty($bookIds)) {
+            return redirect()->back()->with('toast', [
+                'type' => 'error',
+                'message' => 'Pilih minimal satu buku untuk di-route.',
+            ]);
+        }
+
+        $routed = 0;
+        foreach ($bookIds as $bookId) {
+            $inbox = BookInbox::find($bookId);
+            if (!$inbox || $inbox->status !== 'approved') continue;
+
+            $rackId = $rackIds[$bookId] ?? null;
+            if (!$rackId) continue;
+
+            $inbox->update([
+                'status' => 'routed',
+                'rack_id' => $rackId,
+                'position_code' => $positionCodes[$bookId] ?? null,
+                'routed_by' => auth()->id(),
+                'routed_at' => now(),
+            ]);
+
+            $routed++;
+        }
+
+        return redirect()->back()->with('toast', [
+            'type' => $routed > 0 ? 'success' : 'warning',
+            'message' => "{$routed} buku berhasil di-route ke rak.",
+        ]);
     }
 }

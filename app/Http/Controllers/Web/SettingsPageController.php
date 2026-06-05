@@ -41,12 +41,8 @@ class SettingsPageController extends Controller
 
         $this->settingsService->putMany([
             'google_books.api_key' => $validated['google_books_api_key'] ?? null,
-            'ai.ollama.base_url' => $validated['ollama_base_url'],
-            'ai.ollama.vision_model' => $validated['ollama_vision_model'],
-            'ai.ollama.text_model' => $validated['ollama_text_model'],
-            'ai.ollama.web_model' => $validated['ollama_web_model'] ?? null,
-            'ai.ollama.timeout' => (string) $validated['ollama_timeout'],
-            'ai.ollama.connect_timeout' => (string) $validated['ollama_connect_timeout'],
+            'ai.n8n.base_url' => $validated['n8n_base_url'],
+            'ai.n8n.api_key' => $validated['n8n_api_key'] ?? null,
             'ai.websearch.enabled' => (bool) ($validated['websearch_enabled'] ?? false),
             'ai.websearch.tavily_api_key' => $validated['tavily_api_key'] ?? null,
             'ai.websearch.tavily_base_url' => $validated['tavily_base_url'],
@@ -56,17 +52,10 @@ class SettingsPageController extends Controller
             'ai.scan.default_mode' => $validated['scan_default_mode'],
         ]);
 
-        // Defer .env sync to AFTER the HTTP response is sent.
-        // Writing .env triggers Vite HMR restart & Laravel config reload,
-        // which can race with the redirect and cause a "layout pingsan" (CSS-less page).
         $envValues = [
             'GOOGLE_BOOKS_API_KEY' => $validated['google_books_api_key'] ?? null,
-            'OLLAMA_BASE_URL' => $validated['ollama_base_url'],
-            'OLLAMA_VISION_MODEL' => $validated['ollama_vision_model'],
-            'OLLAMA_TEXT_MODEL' => $validated['ollama_text_model'],
-            'OLLAMA_WEB_MODEL' => $validated['ollama_web_model'] ?? null,
-            'OLLAMA_TIMEOUT' => (int) $validated['ollama_timeout'],
-            'OLLAMA_CONNECT_TIMEOUT' => (int) $validated['ollama_connect_timeout'],
+            'N8N_BASE_URL' => $validated['n8n_base_url'],
+            'N8N_API_KEY' => $validated['n8n_api_key'] ?? null,
             'WEBSEARCH_ENABLED' => (bool) ($validated['websearch_enabled'] ?? false),
             'TAVILY_API_KEY' => $validated['tavily_api_key'] ?? null,
             'TAVILY_BASE_URL' => $validated['tavily_base_url'],
@@ -76,6 +65,13 @@ class SettingsPageController extends Controller
             'AI_SCAN_DEFAULT_MODE' => $validated['scan_default_mode'],
         ];
         $envRemoveKeys = [
+            'OLLAMA_BASE_URL',
+            'OLLAMA_MODEL',
+            'OLLAMA_VISION_MODEL',
+            'OLLAMA_TEXT_MODEL',
+            'OLLAMA_WEB_MODEL',
+            'OLLAMA_TIMEOUT',
+            'OLLAMA_CONNECT_TIMEOUT',
             'SEARXNG_BASE_URL',
             'SEARXNG_TIMEOUT',
             'OPENMAIC_BASE_URL',
@@ -88,8 +84,7 @@ class SettingsPageController extends Controller
 
         $this->envFileService->sync($envValues, $envRemoveKeys);
 
-        // Trik rahasia: Jeda 500ms sebelum redirect agar server Laravel & Vite punya waktu
-        // untuk "napas" setelah file .env ditulis ulang. Ini mencegah "Layout Pingsan".
+        // Brief pause: allow server to breathe after .env rewrite
         usleep(500000);
 
         return redirect()

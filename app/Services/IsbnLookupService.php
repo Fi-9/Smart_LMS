@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Log;
 class IsbnLookupService
 {
     public function __construct(
-        private readonly WebBookDescriptionService $webDescriptionService
+        private readonly WebBookDescriptionService $webDescriptionService,
+        private readonly \App\Services\AppSettingsService $settingsService
     ) {
     }
 
@@ -84,6 +85,11 @@ class IsbnLookupService
         return $this->lookupOpenLibraryByIsbnInternal($normalizedIsbn);
     }
 
+    public function lookupOpenLibraryByIsbnOnly(string $isbn): ?array
+    {
+        return $this->lookupOpenLibraryByIsbn($isbn);
+    }
+
     public function lookupOpenLibraryByTitleAuthor(?string $title, ?string $author): ?array
     {
         $cleanTitle = $this->clean($title);
@@ -94,6 +100,11 @@ class IsbnLookupService
         }
 
         return $this->lookupOpenLibraryByTitleAuthorInternal($cleanTitle, $cleanAuthor);
+    }
+
+    public function searchOpenLibraryByTitleAuthorOnly(?string $title, ?string $author): ?array
+    {
+        return $this->lookupOpenLibraryByTitleAuthor($title, $author);
     }
 
     public function lookupByIsbn(string $isbn): ?array
@@ -174,18 +185,22 @@ class IsbnLookupService
                 }
             }
 
-            if ($candidates === []) {
-                return null;
-            }
-
-            $best = array_shift($candidates);
-            foreach ($candidates as $candidate) {
-                if (is_array($best)) {
-                    $best = $this->mergeMissingMetadataFields($best, $candidate);
+            $best = null;
+            if ($candidates !== []) {
+                $best = array_shift($candidates);
+                foreach ($candidates as $candidate) {
+                    if (is_array($best)) {
+                        $best = $this->mergeMissingMetadataFields($best, $candidate);
+                    }
                 }
             }
 
-            return $best;
+            $web = $this->webDescriptionService->resolve($cleanTitle, $cleanAuthor);
+            if ($best && $web) {
+                return $this->mergeMissingMetadataFields($best, $web);
+            }
+
+            return $best ?: $web;
         }, 'google_openlibrary');
     }
 
@@ -285,13 +300,14 @@ class IsbnLookupService
 
     private function lookupGoogle(array $query): ?array
     {
-        $apiKey = config('services.google_books.api_key');
+        $apiKey = $this->settingsService->get('google_books.api_key', config('services.google_books.api_key'));
         if (is_string($apiKey) && $apiKey !== '') {
             $query['key'] = $apiKey;
         }
 
         try {
             $response = Http::timeout(10)
+                ->withoutVerifying()
                 ->acceptJson()
                 ->get('https://www.googleapis.com/books/v1/volumes', $query);
         } catch (ConnectionException) {
@@ -483,6 +499,7 @@ class IsbnLookupService
     {
         try {
             $response = Http::timeout(10)
+                ->withoutVerifying()
                 ->acceptJson()
                 ->get("https://openlibrary.org/isbn/{$isbn}.json");
         } catch (ConnectionException) {
@@ -516,6 +533,7 @@ class IsbnLookupService
 
         try {
             $response = Http::timeout(10)
+                ->withoutVerifying()
                 ->acceptJson()
                 ->get('https://openlibrary.org/search.json', $query);
         } catch (ConnectionException) {
@@ -610,6 +628,7 @@ class IsbnLookupService
     {
         try {
             $authorResponse = Http::timeout(8)
+                ->withoutVerifying()
                 ->acceptJson()
                 ->get('https://openlibrary.org' . $authorKey . '.json');
         } catch (ConnectionException) {

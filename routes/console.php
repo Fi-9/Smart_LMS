@@ -41,3 +41,7 @@ Artisan::command('ai:status', function () {
     $this->newLine();
     $this->line('Recommended batch scan mode: ' . strtoupper($summary['recommended_scan_mode']));
 })->purpose('Show current AI runtime configuration and connectivity status');
+
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('library:prune-observability')->dailyAt('02:00');

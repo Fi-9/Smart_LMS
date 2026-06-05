@@ -46,6 +46,7 @@ class TavilySearchService
 
         try {
             $response = Http::timeout($timeout)
+                ->withoutVerifying()
                 ->acceptJson()
                 ->withToken($apiKey)
                 ->post($baseUrl . '/search', $payload)

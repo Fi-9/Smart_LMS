@@ -14,6 +14,7 @@ class WebContentExtractorService
 
         try {
             $response = Http::timeout($timeout)
+                ->withoutVerifying()
                 ->withHeaders([
                     'User-Agent' => 'SmartLibraryBot/1.0 (+https://localhost)',
                     'Accept-Language' => 'id,en;q=0.8',

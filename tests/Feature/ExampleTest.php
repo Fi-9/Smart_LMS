@@ -21,7 +21,7 @@ class ExampleTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
-    public function test_authenticated_staff_can_access_dashboard(): void
+    public function test_authenticated_staff_is_redirected_to_scanner_dashboard(): void
     {
         $user = User::factory()->create([
             'role' => UserRole::STAFF->value,
@@ -29,7 +29,7 @@ class ExampleTest extends TestCase
 
         $response = $this->actingAs($user)->get('/');
 
-        $response->assertOk();
+        $response->assertRedirect(route('book-scanner.index'));
     }
 
     public function test_login_page_can_be_rendered(): void

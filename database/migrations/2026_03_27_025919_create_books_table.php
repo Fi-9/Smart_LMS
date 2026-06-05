@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('qr_code_path')->nullable();
             $table->enum('status', ['available', 'borrowed'])->default('available');
             $table->timestamps();
+            $table->softDeletes();
 
             $table->unique(['rack_id', 'position_code']);
         });

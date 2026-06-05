@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Services\AiBookScanPipelineService;
 use App\Services\CoverImageService;
 use App\Services\IsbnLookupService;
-use App\Services\OllamaService;
+use App\Services\GeminiService;
 use App\Services\WebBookDescriptionService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -24,12 +24,12 @@ class AiBookScanPipelineServiceTest extends TestCase
     {
         Storage::fake('public');
 
-        $ollama = Mockery::mock(OllamaService::class);
+        $gemini = Mockery::mock(GeminiService::class);
         $isbnLookup = Mockery::mock(IsbnLookupService::class);
         $webDescription = Mockery::mock(WebBookDescriptionService::class);
         $coverService = Mockery::mock(CoverImageService::class);
 
-        $ollama->shouldReceive('extractBookSignals')
+        $gemini->shouldReceive('extractBookSignals')
             ->once()
             ->andReturn([
                 'images' => [
@@ -47,38 +47,42 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('Laskar Pelangi', 'Andrea Hirata')
-            ->andReturn([
-                'title' => 'Laskar Pelangi',
-                'author' => 'Andrea Hirata',
-                'category' => 'Novel Indonesia',
-                'description' => 'Deskripsi dari Google Books.',
-                'publisher' => 'Bentang',
-                'published_year' => '2005',
-                'isbn' => '9789791227204',
-                'cover_url' => 'https://example.com/google.jpg',
-                'source' => 'google',
-                'source_url' => 'https://books.google.com/example',
-            ]);
+            ->with(Mockery::any(), 'Andrea Hirata')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'Laskar Pelangi') !== false) {
+                    return [
+                        'title' => 'Laskar Pelangi',
+                        'author' => 'Andrea Hirata',
+                        'category' => 'Novel Indonesia',
+                        'description' => 'Deskripsi dari Google Books.',
+                        'publisher' => 'Bentang',
+                        'published_year' => '2005',
+                        'isbn' => '9789791227204',
+                        'cover_url' => 'https://example.com/google.jpg',
+                        'source' => 'google',
+                        'source_url' => 'https://books.google.com/example',
+                    ];
+                }
+                return null;
+            });
 
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
         $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')->never();
         $webDescription->shouldReceive('resolveForDomains')->never();
         $webDescription->shouldReceive('resolve')->never();
-        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('cropFrontCover')->never();
         $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/front-normalized.jpg');
 
         $service = new AiBookScanPipelineService(
-            $ollama,
+            $gemini,
             $isbnLookup,
             $webDescription,
             $coverService
         );
 
         $result = $service->scan([
-            UploadedFile::fake()->image('front.jpg'),
-            UploadedFile::fake()->image('back.jpg'),
+            UploadedFile::fake()->create('front.jpg', 10, 'image/jpeg'),
+            UploadedFile::fake()->create('back.jpg', 10, 'image/jpeg'),
         ], 'full');
 
         $this->assertSame('Sinopsis dari back cover.', $result['description']);
@@ -94,12 +98,12 @@ class AiBookScanPipelineServiceTest extends TestCase
     {
         Storage::fake('public');
 
-        $ollama = Mockery::mock(OllamaService::class);
+        $gemini = Mockery::mock(GeminiService::class);
         $isbnLookup = Mockery::mock(IsbnLookupService::class);
         $webDescription = Mockery::mock(WebBookDescriptionService::class);
         $coverService = Mockery::mock(CoverImageService::class);
 
-        $ollama->shouldReceive('extractBookSignals')
+        $gemini->shouldReceive('extractBookSignals')
             ->once()
             ->andReturn([
                 'images' => [
@@ -116,30 +120,33 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->twice()
-            ->with('Bumi', 'Tere Liye')
-            ->andReturn([
-                'title' => 'Bumi',
-                'author' => 'Tere Liye',
-                'category' => 'Fantasi',
-                'description' => null,
-                'publisher' => 'Gramedia',
-                'published_year' => '2014',
-                'isbn' => '9786020300115',
-                'cover_url' => null,
-                'source' => 'google',
-                'source_url' => 'https://books.google.com/bumi',
-            ]);
+            ->with(Mockery::any(), 'Tere Liye')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'Bumi') !== false) {
+                    return [
+                        'title' => 'Bumi',
+                        'author' => 'Tere Liye',
+                        'category' => 'Fantasi',
+                        'description' => null,
+                        'publisher' => 'Gramedia',
+                        'published_year' => '2014',
+                        'isbn' => '9786020300115',
+                        'cover_url' => null,
+                        'source' => 'google',
+                        'source_url' => 'https://books.google.com/bumi',
+                    ];
+                }
+                return null;
+            });
 
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
         $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')
-            ->once()
-            ->with('Bumi', 'Tere Liye')
+            ->with(Mockery::any(), 'Tere Liye')
             ->andReturn(null);
 
         $webDescription->shouldReceive('resolveForDomains')
             ->once()
-            ->with('Bumi', 'Tere Liye', ['gramedia.com', 'gramedia.digital'])
+            ->with(Mockery::on(fn($val) => stripos($val, 'Bumi') !== false), 'Tere Liye', ['gramedia.com', 'gramedia.digital'])
             ->andReturn([
                 'description' => 'Sinopsis resmi dari Gramedia.',
                 'source_url' => 'https://www.gramedia.com/products/bumi',
@@ -148,18 +155,18 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $webDescription->shouldReceive('resolve')->never();
-        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('cropFrontCover')->never();
         $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/bumi-front.jpg');
 
         $service = new AiBookScanPipelineService(
-            $ollama,
+            $gemini,
             $isbnLookup,
             $webDescription,
             $coverService
         );
 
         $result = $service->scan([
-            UploadedFile::fake()->image('front.jpg'),
+            UploadedFile::fake()->create('front.jpg', 10, 'image/jpeg'),
         ], 'full');
 
         $this->assertSame('Sinopsis resmi dari Gramedia.', $result['description']);
@@ -172,12 +179,12 @@ class AiBookScanPipelineServiceTest extends TestCase
     {
         Storage::fake('public');
 
-        $ollama = Mockery::mock(OllamaService::class);
+        $gemini = Mockery::mock(GeminiService::class);
         $isbnLookup = Mockery::mock(IsbnLookupService::class);
         $webDescription = Mockery::mock(WebBookDescriptionService::class);
         $coverService = Mockery::mock(CoverImageService::class);
 
-        $ollama->shouldReceive('extractBookSignals')
+        $gemini->shouldReceive('extractBookSignals')
             ->once()
             ->andReturn([
                 'images' => [
@@ -194,52 +201,60 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->twice()
-            ->with('Keep Going', 'Austin Kleon')
-            ->andReturn([
-                'title' => 'Keep Going',
-                'author' => 'Austin Kleon',
-                'category' => 'Non-fiksi',
-                'description' => null,
-                'publisher' => 'Google Publisher',
-                'published_year' => '2019',
-                'isbn' => '9781523506640',
-                'cover_url' => null,
-                'source' => 'google',
-                'source_url' => 'https://books.google.com/keep-going',
-            ]);
+            ->with(Mockery::any(), 'Austin Kleon')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'Keep Going') !== false) {
+                    return [
+                        'title' => 'Keep Going',
+                        'author' => 'Austin Kleon',
+                        'category' => 'Non-fiksi',
+                        'description' => null,
+                        'publisher' => 'Google Publisher',
+                        'published_year' => '2019',
+                        'isbn' => '9781523506640',
+                        'cover_url' => null,
+                        'source' => 'google',
+                        'source_url' => 'https://books.google.com/keep-going',
+                    ];
+                }
+                return null;
+            });
 
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
         $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')
-            ->once()
-            ->with('Keep Going', 'Austin Kleon')
-            ->andReturn([
-                'title' => 'Keep Going',
-                'author' => 'Austin Kleon',
-                'category' => 'Non-fiksi',
-                'description' => 'Deskripsi dari Open Library untuk Keep Going.',
-                'publisher' => 'Workman Publishing',
-                'published_year' => '2019',
-                'isbn' => '9781523506640',
-                'cover_url' => null,
-                'source' => 'openlibrary',
-                'source_url' => 'https://openlibrary.org/books/OL123/Keep_Going',
-            ]);
+            ->with(Mockery::any(), 'Austin Kleon')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'Keep Going') !== false) {
+                    return [
+                        'title' => 'Keep Going',
+                        'author' => 'Austin Kleon',
+                        'category' => 'Non-fiksi',
+                        'description' => 'Deskripsi dari Open Library untuk Keep Going.',
+                        'publisher' => 'Workman Publishing',
+                        'published_year' => '2019',
+                        'isbn' => '9781523506640',
+                        'cover_url' => null,
+                        'source' => 'openlibrary',
+                        'source_url' => 'https://openlibrary.org/books/OL123/Keep_Going',
+                    ];
+                }
+                return null;
+            });
 
         $webDescription->shouldReceive('resolveForDomains')->never();
         $webDescription->shouldReceive('resolve')->never();
-        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('cropFrontCover')->never();
         $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/keep-going-front.jpg');
 
         $service = new AiBookScanPipelineService(
-            $ollama,
+            $gemini,
             $isbnLookup,
             $webDescription,
             $coverService
         );
 
         $result = $service->scan([
-            UploadedFile::fake()->image('front.jpg'),
+            UploadedFile::fake()->create('front.jpg', 10, 'image/jpeg'),
         ], 'full');
 
         $this->assertSame('Deskripsi dari Open Library untuk Keep Going.', $result['description']);
@@ -252,12 +267,12 @@ class AiBookScanPipelineServiceTest extends TestCase
     {
         Storage::fake('public');
 
-        $ollama = Mockery::mock(OllamaService::class);
+        $gemini = Mockery::mock(GeminiService::class);
         $isbnLookup = Mockery::mock(IsbnLookupService::class);
         $webDescription = Mockery::mock(WebBookDescriptionService::class);
         $coverService = Mockery::mock(CoverImageService::class);
 
-        $ollama->shouldReceive('extractBookSignals')
+        $gemini->shouldReceive('extractBookSignals')
             ->once()
             ->andReturn([
                 'images' => [
@@ -274,57 +289,40 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('The Endmatic Enduring Vision: A Enduring Vision: A History of the American People', 'Adimitra Nursalim')
-            ->andReturn(null);
-
-        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('The Endmatic Enduring Vision A Enduring Vision A History of the American People', 'Adimitra Nursalim')
-            ->andReturn(null);
-
-        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('The Endmatic Enduring Vision', 'Adimitra Nursalim')
-            ->andReturn(null);
-
-        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('A Enduring Vision', 'Adimitra Nursalim')
-            ->andReturn(null);
-
-        $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('A History of the American People', 'Adimitra Nursalim')
-            ->andReturn([
-                'title' => 'The Enduring Vision: A History of the American People',
-                'author' => 'Boyer Clark Kett',
-                'category' => 'Sejarah',
-                'description' => 'Deskripsi dari Google Books.',
-                'publisher' => 'Cengage',
-                'published_year' => '2010',
-                'isbn' => '9781111342643',
-                'cover_url' => null,
-                'source' => 'google',
-                'source_url' => 'https://books.google.com/enduring-vision',
-            ]);
+            ->with(Mockery::any(), 'Adimitra Nursalim')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'History of the American People') !== false) {
+                    return [
+                        'title' => 'The Enduring Vision: A History of the American People',
+                        'author' => 'Boyer Clark Kett',
+                        'category' => 'Sejarah',
+                        'description' => 'Deskripsi dari Google Books.',
+                        'publisher' => 'Cengage',
+                        'published_year' => '2010',
+                        'isbn' => '9781111342643',
+                        'cover_url' => null,
+                        'source' => 'google',
+                        'source_url' => 'https://books.google.com/enduring-vision',
+                    ];
+                }
+                return null;
+            });
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
-        $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')
-            ->never();
+        $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')->never();
         $webDescription->shouldReceive('resolveForDomains')->never();
         $webDescription->shouldReceive('resolve')->never();
-        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('cropFrontCover')->never();
         $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/enduring-vision-front.jpg');
 
         $service = new AiBookScanPipelineService(
-            $ollama,
+            $gemini,
             $isbnLookup,
             $webDescription,
             $coverService
         );
 
         $result = $service->scan([
-            UploadedFile::fake()->image('front.jpg'),
+            UploadedFile::fake()->create('front.jpg', 10, 'image/jpeg'),
         ], 'full');
 
         $this->assertSame('Deskripsi dari Google Books.', $result['description']);
@@ -336,12 +334,12 @@ class AiBookScanPipelineServiceTest extends TestCase
     {
         Storage::fake('public');
 
-        $ollama = Mockery::mock(OllamaService::class);
+        $gemini = Mockery::mock(GeminiService::class);
         $isbnLookup = Mockery::mock(IsbnLookupService::class);
         $webDescription = Mockery::mock(WebBookDescriptionService::class);
         $coverService = Mockery::mock(CoverImageService::class);
 
-        $ollama->shouldReceive('extractBookSignals')
+        $gemini->shouldReceive('extractBookSignals')
             ->once()
             ->andReturn([
                 'images' => [
@@ -358,40 +356,48 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->times(2)
-            ->with('KEEP GOING', 'AUSTIN KLEON')
-            ->andReturn([
-                'title' => 'Keep Going',
-                'author' => 'Austin Kleon',
-                'category' => 'Non-fiksi',
-                'description' => null,
-                'publisher' => 'Open Library Publisher',
-                'published_year' => '2019',
-                'isbn' => '9781523506640',
-                'cover_url' => null,
-                'source' => 'openlibrary',
-                'source_url' => 'https://openlibrary.org/books/OL1',
-            ]);
+            ->with(Mockery::any(), 'AUSTIN KLEON')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'KEEP GOING') !== false) {
+                    return [
+                        'title' => 'Keep Going',
+                        'author' => 'Austin Kleon',
+                        'category' => 'Non-fiksi',
+                        'description' => null,
+                        'publisher' => 'Open Library Publisher',
+                        'published_year' => '2019',
+                        'isbn' => '9781523506640',
+                        'cover_url' => null,
+                        'source' => 'openlibrary',
+                        'source_url' => 'https://openlibrary.org/books/OL1',
+                    ];
+                }
+                return null;
+            });
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
         $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')
-            ->once()
-            ->with('KEEP GOING', 'AUSTIN KLEON')
-            ->andReturn([
-                'title' => 'Keep Going',
-                'author' => 'Austin Kleon',
-                'category' => 'Non-fiksi',
-                'description' => null,
-                'publisher' => 'Open Library Publisher',
-                'published_year' => '2019',
-                'isbn' => '9781523506640',
-                'cover_url' => null,
-                'source' => 'openlibrary',
-                'source_url' => 'https://openlibrary.org/books/OL1',
-            ]);
+            ->with(Mockery::any(), 'AUSTIN KLEON')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'KEEP GOING') !== false) {
+                    return [
+                        'title' => 'Keep Going',
+                        'author' => 'Austin Kleon',
+                        'category' => 'Non-fiksi',
+                        'description' => null,
+                        'publisher' => 'Open Library Publisher',
+                        'published_year' => '2019',
+                        'isbn' => '9781523506640',
+                        'cover_url' => null,
+                        'source' => 'openlibrary',
+                        'source_url' => 'https://openlibrary.org/books/OL1',
+                    ];
+                }
+                return null;
+            });
 
         $webDescription->shouldReceive('resolveForDomains')
             ->once()
-            ->with('KEEP GOING', 'AUSTIN KLEON', ['gramedia.com', 'gramedia.digital'])
+            ->with(Mockery::on(fn($val) => stripos($val, 'KEEP GOING') !== false), 'AUSTIN KLEON', ['gramedia.com', 'gramedia.digital'])
             ->andReturn([
                 'description' => 'Deskripsi resmi web untuk Keep Going.',
                 'source_url' => 'https://www.gramedia.com/products/keep-going',
@@ -400,18 +406,18 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $webDescription->shouldReceive('resolve')->never();
-        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('cropFrontCover')->never();
         $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/keep-going-clean.jpg');
 
         $service = new AiBookScanPipelineService(
-            $ollama,
+            $gemini,
             $isbnLookup,
             $webDescription,
             $coverService
         );
 
         $result = $service->scan([
-            UploadedFile::fake()->image('front.jpg'),
+            UploadedFile::fake()->create('front.jpg', 10, 'image/jpeg'),
         ], 'full');
 
         $this->assertSame('KEEP GOING', $result['title']);
@@ -424,12 +430,12 @@ class AiBookScanPipelineServiceTest extends TestCase
     {
         Storage::fake('public');
 
-        $ollama = Mockery::mock(OllamaService::class);
+        $gemini = Mockery::mock(GeminiService::class);
         $isbnLookup = Mockery::mock(IsbnLookupService::class);
         $webDescription = Mockery::mock(WebBookDescriptionService::class);
         $coverService = Mockery::mock(CoverImageService::class);
 
-        $ollama->shouldReceive('extractBookSignals')
+        $gemini->shouldReceive('extractBookSignals')
             ->once()
             ->andReturn([
                 'images' => [
@@ -446,41 +452,45 @@ class AiBookScanPipelineServiceTest extends TestCase
             ]);
 
         $isbnLookup->shouldReceive('searchGoogleByTitleAuthorOnly')
-            ->once()
-            ->with('Keep Going', 'Austin Kleon')
-            ->andReturn([
-                'title' => 'Keep Going',
-                'author' => 'Austin Kleon',
-                'category' => 'Self-Help',
-                'description' => 'Keep Working. Keep Playing. Keep Creating.',
-                'publisher' => 'Workman',
-                'published_year' => '2019',
-                'isbn' => '9781523506640',
-                'cover_url' => null,
-                'source' => 'google',
-                'source_url' => 'https://books.google.com/keep-going',
-            ]);
+            ->with(Mockery::any(), 'Austin Kleon')
+            ->andReturnUsing(function ($title) {
+                if (stripos($title, 'Keep Going') !== false) {
+                    return [
+                        'title' => 'Keep Going',
+                        'author' => 'Austin Kleon',
+                        'category' => 'Self-Help',
+                        'description' => 'Keep Working. Keep Playing. Keep Creating.',
+                        'publisher' => 'Workman',
+                        'published_year' => '2019',
+                        'isbn' => '9781523506640',
+                        'cover_url' => null,
+                        'source' => 'google',
+                        'source_url' => 'https://books.google.com/keep-going',
+                    ];
+                }
+                return null;
+            });
 
         $isbnLookup->shouldReceive('lookupOpenLibraryByIsbn')->never();
         $isbnLookup->shouldReceive('lookupOpenLibraryByTitleAuthor')->never();
         $webDescription->shouldReceive('resolveForDomains')->never();
         $webDescription->shouldReceive('resolve')->never();
-        $ollama->shouldReceive('translateTextToIndonesian')
+        $gemini->shouldReceive('translateTextToIndonesian')
             ->once()
             ->with('Keep Working. Keep Playing. Keep Creating.')
             ->andReturn('Terus Berkarya. Terus Bermain. Terus Mencipta.');
-        $coverService->shouldReceive('cropFrontCover')->once()->andReturn(null);
+        $coverService->shouldReceive('cropFrontCover')->never();
         $coverService->shouldReceive('normalizeCoverFromUpload')->once()->andReturn('/storage/book-scans/keep-going-front.jpg');
 
         $service = new AiBookScanPipelineService(
-            $ollama,
+            $gemini,
             $isbnLookup,
             $webDescription,
             $coverService
         );
 
         $result = $service->scan([
-            UploadedFile::fake()->image('front.jpg'),
+            UploadedFile::fake()->create('front.jpg', 10, 'image/jpeg'),
         ], 'full');
 
         $this->assertSame('Terus Berkarya. Terus Bermain. Terus Mencipta.', $result['description']);

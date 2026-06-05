@@ -25,19 +25,15 @@ class AiBatchImportFlowTest extends TestCase
     {
         parent::setUp();
 
-        Config::set('services.ollama.base_url', 'http://127.0.0.1:11434');
-        Config::set('services.ollama.vision_model', 'gemma4:26b');
-        Config::set('services.ollama.text_model', 'gemma4-id:26b');
-        Config::set('services.ollama.web_model', 'gemma4-id:26b');
+        Config::set('services.n8n.base_url', 'http://127.0.0.1:5678');
+        Config::set('services.n8n.api_key', 'n8n-secret');
+        Config::set('services.gemini.model', 'gemini-2.5-flash');
+        Config::set('services.gemini.vision_model', 'gemini-2.5-flash');
         Config::set('services.websearch.enabled', false);
-        Config::set('services.websearch.base_url', '');
 
         Http::fake([
-            'http://127.0.0.1:11434/api/tags' => Http::response([
-                'models' => [
-                    ['name' => 'gemma4:26b'],
-                    ['name' => 'gemma4-id:26b'],
-                ],
+            'http://127.0.0.1:5678/healthz' => Http::response([
+                'status' => 'ok',
             ], 200),
         ]);
     }
@@ -90,11 +86,11 @@ class AiBatchImportFlowTest extends TestCase
             'mode' => 'full',
             'books' => [
                 [
-                    'front_image' => UploadedFile::fake()->image('front-1.jpg'),
-                    'back_image' => UploadedFile::fake()->image('back-1.jpg'),
+                    'front_image' => UploadedFile::fake()->create('front-1.jpg', 10, 'image/jpeg'),
+                    'back_image' => UploadedFile::fake()->create('back-1.jpg', 10, 'image/jpeg'),
                 ],
                 [
-                    'front_image' => UploadedFile::fake()->image('front-2.jpg'),
+                    'front_image' => UploadedFile::fake()->create('front-2.jpg', 10, 'image/jpeg'),
                 ],
             ],
         ]);
@@ -125,11 +121,11 @@ class AiBatchImportFlowTest extends TestCase
                 'mode' => 'full',
                 'books' => [
                     [
-                        'front_image' => UploadedFile::fake()->image('front-1.jpg'),
+                        'front_image' => UploadedFile::fake()->create('front-1.jpg', 10, 'image/jpeg'),
                     ],
                     [
-                        'front_image' => UploadedFile::fake()->image('front-2.jpg'),
-                        'back_image' => UploadedFile::fake()->image('back-2.jpg'),
+                        'front_image' => UploadedFile::fake()->create('front-2.jpg', 10, 'image/jpeg'),
+                        'back_image' => UploadedFile::fake()->create('back-2.jpg', 10, 'image/jpeg'),
                     ],
                 ],
             ]);
@@ -171,10 +167,10 @@ class AiBatchImportFlowTest extends TestCase
                 'mode' => 'full',
                 'books' => [
                     [
-                        'front_image' => UploadedFile::fake()->image('front-1.jpg'),
+                        'front_image' => UploadedFile::fake()->create('front-1.jpg', 10, 'image/jpeg'),
                     ],
                     [
-                        'front_image' => UploadedFile::fake()->image('front-2.jpg'),
+                        'front_image' => UploadedFile::fake()->create('front-2.jpg', 10, 'image/jpeg'),
                     ],
                 ],
             ]);

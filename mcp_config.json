@@ -84,6 +84,13 @@
         "-y",
         "@modelcontextprotocol/server-http"
       ]
+    },
+    "n8n-mcp": {
+      "type": "http",
+      "url": "https://n8n.smkmustaqbal.sch.id/mcp-server/http",
+      "headers": {
+        "Authorization": "Bearer ${N8N_MCP_TOKEN}"
+      }
     }
   }
 }

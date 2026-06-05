@@ -36,8 +36,8 @@
     @endphp
 
     <div class="mb-6">
-        <h1 class="page-title">Smart Ingest</h1>
-        <p class="page-subtitle">Unified ingest untuk upload aset, review draft metadata, dan routing buku ke lokasi fisik perpustakaan.</p>
+        <h1 class="page-title">?? Task \&amp; Routing</h1>
+        <p class="page-subtitle">Upload aset, review metadata, grouping buku, dan tentukan routing fisik ke rak perpustakaan.</p>
     </div>
 
     <div class="mb-6 rounded-[1.35rem] border border-gray-200 bg-white px-4 py-3 shadow-sm">
@@ -87,21 +87,25 @@
     @endif
 
     <div class="mb-5 flex items-center gap-1 rounded-xl bg-gray-100 p-1" style="width: fit-content">
-        <button type="button" data-tab-trigger="ai" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
-            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-700 text-[10px] font-bold text-white">📷</span>
-            AI Scan
+        <button type="button" data-tab-trigger="review" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-700 text-[10px] font-bold text-white">??</span>
+            Review
+        </button>
+        <button type="button" data-tab-trigger="grouping" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">??</span>
+            Grouping
+        </button>
+        <button type="button" data-tab-trigger="routing" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">??</span>
+            Routing
         </button>
         <button type="button" data-tab-trigger="isbn" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
-            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">📖</span>
-            ISBN Scan
-        </button>
-        <button type="button" data-tab-trigger="review" class="flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-all duration-150">
-            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">✓</span>
-            Review & Grouping
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-[10px] font-bold text-white">??</span>
+            ISBN Lookup
         </button>
     </div>
 
-    <div data-tab-panel="ai" class="{{ $hasManualErrors ? 'hidden' : '' }}">
+    <div data-tab-panel="ai" class="hidden">
         <div class="mb-5 rounded-[1.4rem] border border-primary-100 bg-gradient-to-r from-primary-50 via-white to-amber-50 px-5 py-4">
             <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
@@ -226,7 +230,7 @@
         </div>
     </div>
 
-    <div data-tab-panel="review" class="hidden">
+    <div data-tab-panel="review" class="">
             @if($groupedDraftBooks->isNotEmpty())
                 <form method="POST" action="{{ route('books.import.ai-review-commit') }}" class="space-y-5">
                     @csrf
@@ -426,7 +430,667 @@
                 </div>
             </div>
         </div>
-    </template>
+    {{-- GROUPING PANEL --}}
+    <div data-tab-panel="grouping" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Grouping Buku</h2>
+            <p class="mb-6 text-sm text-gray-500">Kelompokkan buku yang sudah di-review berdasarkan kategori sebelum routing ke rak.</p>
+            @php
+                $inboxApproved = \App\Models\BookInbox::approved()->latest()->limit(50)->get();
+                $groupedInbox = $inboxApproved->groupBy("category");
+            @endphp
+            @if($inboxApproved->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Belum ada buku yang di-approve.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <div class="space-y-4">
+                    @foreach($groupedInbox as $cat => $books)
+                        <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800">{{ $cat ?: "Tanpa Kategori" }} <span class="text-xs font-normal text-gray-400">({{ $books->count() }} buku)</span></h3>
+                                <button type="button" class="rounded-lg bg-primary-700 px-3 py-1 text-xs font-semibold text-white" onclick="document.querySelector(`[data-tab-trigger=routing]`).click()">&#10140; Route ke Rak</button>
+                            </div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                @foreach($books as $book)
+                                    <div class="flex items-center gap-3 rounded-lg bg-white p-3 text-sm">
+                                        <span class="shrink-0 text-lg">??</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate font-medium">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }} &middot; {{ $book->isbn }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- ROUTING PANEL --}}
+    <div data-tab-panel="routing" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Routing Buku ke Rak</h2>
+            <p class="mb-6 text-sm text-gray-500">Tempatkan buku yang sudah disetujui ke rak fisik perpustakaan.</p>
+            @php
+                $routableBooks = \App\Models\BookInbox::whereIn("status", ["approved"])->latest()->limit(50)->get();
+                $allRacks = \App\Models\Rack::with("room")->orderBy("name")->get();
+                $routedToday = \App\Models\BookInbox::routed()->whereDate("routed_at", today())->count();
+            @endphp
+            @if($routableBooks->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Tidak ada buku yang perlu di-route.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <form method="POST" action="{{ route("books.import.route-books") }}" class="space-y-4">
+                    @csrf
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3"><input type="checkbox" id="select-all-routing" class="rounded"></th>
+                                    <th class="p-3">Buku</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Rak Tujuan</th>
+                                    <th class="p-3">Posisi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($routableBooks as $book)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="p-3"><input type="checkbox" name="book_ids[]" value="{{ $book->id }}" class="routing-checkbox rounded"></td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-gray-900">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }}</p>
+                                        </td>
+                                        <td class="p-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-xs">{{ $book->category ?: "-" }}</span></td>
+                                        <td class="p-3">
+                                            <select name="rack_ids[{{ $book->id }}]" class="form-input w-40 text-sm">
+                                                <option value="">-- Pilih Rak --</option>
+                                                @foreach($allRacks as $rack)
+                                                    <option value="{{ $rack->id }}">{{ $rack->name }} @if($rack->room) ({{ $rack->room->name }}) @endif</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <input type="text" name="position_codes[{{ $book->id }}]" class="form-input w-24 text-sm" placeholder="A1-01">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="submit" class="rounded-xl bg-primary-700 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-800">
+                            ? Konfirmasi Routing
+                        </button>
+                    </div>
+                </form>
+            @endif
+            <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-800">
+                    ?? Sudah Di-route Hari Ini: <strong>{{ $routedToday }}</strong> buku
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {{-- GROUPING PANEL --}}
+    <div data-tab-panel="grouping" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Grouping Buku</h2>
+            <p class="mb-6 text-sm text-gray-500">Kelompokkan buku yang sudah di-review berdasarkan kategori sebelum routing ke rak.</p>
+            @php
+                $inboxApproved = \App\Models\BookInbox::approved()->latest()->limit(50)->get();
+                $groupedInbox = $inboxApproved->groupBy("category");
+            @endphp
+            @if($inboxApproved->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Belum ada buku yang di-approve.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <div class="space-y-4">
+                    @foreach($groupedInbox as $cat => $books)
+                        <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800">{{ $cat ?: "Tanpa Kategori" }} <span class="text-xs font-normal text-gray-400">({{ $books->count() }} buku)</span></h3>
+                                <button type="button" class="rounded-lg bg-primary-700 px-3 py-1 text-xs font-semibold text-white" onclick="document.querySelector(`[data-tab-trigger=routing]`).click()">&#10140; Route ke Rak</button>
+                            </div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                @foreach($books as $book)
+                                    <div class="flex items-center gap-3 rounded-lg bg-white p-3 text-sm">
+                                        <span class="shrink-0 text-lg">??</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate font-medium">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }} &middot; {{ $book->isbn }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- ROUTING PANEL --}}
+    <div data-tab-panel="routing" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Routing Buku ke Rak</h2>
+            <p class="mb-6 text-sm text-gray-500">Tempatkan buku yang sudah disetujui ke rak fisik perpustakaan.</p>
+            @php
+                $routableBooks = \App\Models\BookInbox::whereIn("status", ["approved"])->latest()->limit(50)->get();
+                $allRacks = \App\Models\Rack::with("room")->orderBy("name")->get();
+                $routedToday = \App\Models\BookInbox::routed()->whereDate("routed_at", today())->count();
+            @endphp
+            @if($routableBooks->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Tidak ada buku yang perlu di-route.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <form method="POST" action="{{ route("books.import.route-books") }}" class="space-y-4">
+                    @csrf
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3"><input type="checkbox" id="select-all-routing" class="rounded"></th>
+                                    <th class="p-3">Buku</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Rak Tujuan</th>
+                                    <th class="p-3">Posisi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($routableBooks as $book)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="p-3"><input type="checkbox" name="book_ids[]" value="{{ $book->id }}" class="routing-checkbox rounded"></td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-gray-900">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }}</p>
+                                        </td>
+                                        <td class="p-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-xs">{{ $book->category ?: "-" }}</span></td>
+                                        <td class="p-3">
+                                            <select name="rack_ids[{{ $book->id }}]" class="form-input w-40 text-sm">
+                                                <option value="">-- Pilih Rak --</option>
+                                                @foreach($allRacks as $rack)
+                                                    <option value="{{ $rack->id }}">{{ $rack->name }} @if($rack->room) ({{ $rack->room->name }}) @endif</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <input type="text" name="position_codes[{{ $book->id }}]" class="form-input w-24 text-sm" placeholder="A1-01">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="submit" class="rounded-xl bg-primary-700 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-800">
+                            ? Konfirmasi Routing
+                        </button>
+                    </div>
+                </form>
+            @endif
+            <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-800">
+                    ?? Sudah Di-route Hari Ini: <strong>{{ $routedToday }}</strong> buku
+                </p>
+            </div>
+        </div>
+    </div> 
+    {{-- GROUPING PANEL --}}
+    <div data-tab-panel="grouping" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Grouping Buku</h2>
+            <p class="mb-6 text-sm text-gray-500">Kelompokkan buku yang sudah di-review berdasarkan kategori sebelum routing ke rak.</p>
+            @php
+                $inboxApproved = \App\Models\BookInbox::approved()->latest()->limit(50)->get();
+                $groupedInbox = $inboxApproved->groupBy("category");
+            @endphp
+            @if($inboxApproved->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Belum ada buku yang di-approve.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <div class="space-y-4">
+                    @foreach($groupedInbox as $cat => $books)
+                        <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800">{{ $cat ?: "Tanpa Kategori" }} <span class="text-xs font-normal text-gray-400">({{ $books->count() }} buku)</span></h3>
+                                <button type="button" class="rounded-lg bg-primary-700 px-3 py-1 text-xs font-semibold text-white" onclick="document.querySelector(`[data-tab-trigger=routing]`).click()">&#10140; Route ke Rak</button>
+                            </div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                @foreach($books as $book)
+                                    <div class="flex items-center gap-3 rounded-lg bg-white p-3 text-sm">
+                                        <span class="shrink-0 text-lg">??</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate font-medium">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }} &middot; {{ $book->isbn }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- ROUTING PANEL --}}
+    <div data-tab-panel="routing" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Routing Buku ke Rak</h2>
+            <p class="mb-6 text-sm text-gray-500">Tempatkan buku yang sudah disetujui ke rak fisik perpustakaan.</p>
+            @php
+                $routableBooks = \App\Models\BookInbox::whereIn("status", ["approved"])->latest()->limit(50)->get();
+                $allRacks = \App\Models\Rack::with("room")->orderBy("name")->get();
+                $routedToday = \App\Models\BookInbox::routed()->whereDate("routed_at", today())->count();
+            @endphp
+            @if($routableBooks->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Tidak ada buku yang perlu di-route.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <form method="POST" action="{{ route("books.import.route-books") }}" class="space-y-4">
+                    @csrf
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3"><input type="checkbox" id="select-all-routing" class="rounded"></th>
+                                    <th class="p-3">Buku</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Rak Tujuan</th>
+                                    <th class="p-3">Posisi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($routableBooks as $book)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="p-3"><input type="checkbox" name="book_ids[]" value="{{ $book->id }}" class="routing-checkbox rounded"></td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-gray-900">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }}</p>
+                                        </td>
+                                        <td class="p-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-xs">{{ $book->category ?: "-" }}</span></td>
+                                        <td class="p-3">
+                                            <select name="rack_ids[{{ $book->id }}]" class="form-input w-40 text-sm">
+                                                <option value="">-- Pilih Rak --</option>
+                                                @foreach($allRacks as $rack)
+                                                    <option value="{{ $rack->id }}">{{ $rack->name }} @if($rack->room) ({{ $rack->room->name }}) @endif</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <input type="text" name="position_codes[{{ $book->id }}]" class="form-input w-24 text-sm" placeholder="A1-01">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="submit" class="rounded-xl bg-primary-700 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-800">
+                            ? Konfirmasi Routing
+                        </button>
+                    </div>
+                </form>
+            @endif
+            <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-800">
+                    ?? Sudah Di-route Hari Ini: <strong>{{ $routedToday }}</strong> buku
+                </p>
+            </div>
+        </div>
+    </div> 
+    {{-- GROUPING PANEL --}}
+    <div data-tab-panel="grouping" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Grouping Buku</h2>
+            <p class="mb-6 text-sm text-gray-500">Kelompokkan buku yang sudah di-review berdasarkan kategori sebelum routing ke rak.</p>
+            @php
+                $inboxApproved = \App\Models\BookInbox::approved()->latest()->limit(50)->get();
+                $groupedInbox = $inboxApproved->groupBy("category");
+            @endphp
+            @if($inboxApproved->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Belum ada buku yang di-approve.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <div class="space-y-4">
+                    @foreach($groupedInbox as $cat => $books)
+                        <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800">{{ $cat ?: "Tanpa Kategori" }} <span class="text-xs font-normal text-gray-400">({{ $books->count() }} buku)</span></h3>
+                                <button type="button" class="rounded-lg bg-primary-700 px-3 py-1 text-xs font-semibold text-white" onclick="document.querySelector(`[data-tab-trigger=routing]`).click()">&#10140; Route ke Rak</button>
+                            </div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                @foreach($books as $book)
+                                    <div class="flex items-center gap-3 rounded-lg bg-white p-3 text-sm">
+                                        <span class="shrink-0 text-lg">??</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate font-medium">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }} &middot; {{ $book->isbn }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- ROUTING PANEL --}}
+    <div data-tab-panel="routing" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Routing Buku ke Rak</h2>
+            <p class="mb-6 text-sm text-gray-500">Tempatkan buku yang sudah disetujui ke rak fisik perpustakaan.</p>
+            @php
+                $routableBooks = \App\Models\BookInbox::whereIn("status", ["approved"])->latest()->limit(50)->get();
+                $allRacks = \App\Models\Rack::with("room")->orderBy("name")->get();
+                $routedToday = \App\Models\BookInbox::routed()->whereDate("routed_at", today())->count();
+            @endphp
+            @if($routableBooks->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Tidak ada buku yang perlu di-route.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <form method="POST" action="{{ route("books.import.route-books") }}" class="space-y-4">
+                    @csrf
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3"><input type="checkbox" id="select-all-routing" class="rounded"></th>
+                                    <th class="p-3">Buku</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Rak Tujuan</th>
+                                    <th class="p-3">Posisi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($routableBooks as $book)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="p-3"><input type="checkbox" name="book_ids[]" value="{{ $book->id }}" class="routing-checkbox rounded"></td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-gray-900">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }}</p>
+                                        </td>
+                                        <td class="p-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-xs">{{ $book->category ?: "-" }}</span></td>
+                                        <td class="p-3">
+                                            <select name="rack_ids[{{ $book->id }}]" class="form-input w-40 text-sm">
+                                                <option value="">-- Pilih Rak --</option>
+                                                @foreach($allRacks as $rack)
+                                                    <option value="{{ $rack->id }}">{{ $rack->name }} @if($rack->room) ({{ $rack->room->name }}) @endif</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <input type="text" name="position_codes[{{ $book->id }}]" class="form-input w-24 text-sm" placeholder="A1-01">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="submit" class="rounded-xl bg-primary-700 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-800">
+                            ? Konfirmasi Routing
+                        </button>
+                    </div>
+                </form>
+            @endif
+            <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-800">
+                    ?? Sudah Di-route Hari Ini: <strong>{{ $routedToday }}</strong> buku
+                </p>
+            </div>
+        </div>
+    </div> 
+    {{-- GROUPING PANEL --}}
+    <div data-tab-panel="grouping" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Grouping Buku</h2>
+            <p class="mb-6 text-sm text-gray-500">Kelompokkan buku yang sudah di-review berdasarkan kategori sebelum routing ke rak.</p>
+            @php
+                $inboxApproved = \App\Models\BookInbox::approved()->latest()->limit(50)->get();
+                $groupedInbox = $inboxApproved->groupBy("category");
+            @endphp
+            @if($inboxApproved->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Belum ada buku yang di-approve.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <div class="space-y-4">
+                    @foreach($groupedInbox as $cat => $books)
+                        <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800">{{ $cat ?: "Tanpa Kategori" }} <span class="text-xs font-normal text-gray-400">({{ $books->count() }} buku)</span></h3>
+                                <button type="button" class="rounded-lg bg-primary-700 px-3 py-1 text-xs font-semibold text-white" onclick="document.querySelector(`[data-tab-trigger=routing]`).click()">&#10140; Route ke Rak</button>
+                            </div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                @foreach($books as $book)
+                                    <div class="flex items-center gap-3 rounded-lg bg-white p-3 text-sm">
+                                        <span class="shrink-0 text-lg">??</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate font-medium">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }} &middot; {{ $book->isbn }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- ROUTING PANEL --}}
+    <div data-tab-panel="routing" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Routing Buku ke Rak</h2>
+            <p class="mb-6 text-sm text-gray-500">Tempatkan buku yang sudah disetujui ke rak fisik perpustakaan.</p>
+            @php
+                $routableBooks = \App\Models\BookInbox::whereIn("status", ["approved"])->latest()->limit(50)->get();
+                $allRacks = \App\Models\Rack::with("room")->orderBy("name")->get();
+                $routedToday = \App\Models\BookInbox::routed()->whereDate("routed_at", today())->count();
+            @endphp
+            @if($routableBooks->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Tidak ada buku yang perlu di-route.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <form method="POST" action="{{ route("books.import.route-books") }}" class="space-y-4">
+                    @csrf
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3"><input type="checkbox" id="select-all-routing" class="rounded"></th>
+                                    <th class="p-3">Buku</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Rak Tujuan</th>
+                                    <th class="p-3">Posisi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($routableBooks as $book)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="p-3"><input type="checkbox" name="book_ids[]" value="{{ $book->id }}" class="routing-checkbox rounded"></td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-gray-900">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }}</p>
+                                        </td>
+                                        <td class="p-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-xs">{{ $book->category ?: "-" }}</span></td>
+                                        <td class="p-3">
+                                            <select name="rack_ids[{{ $book->id }}]" class="form-input w-40 text-sm">
+                                                <option value="">-- Pilih Rak --</option>
+                                                @foreach($allRacks as $rack)
+                                                    <option value="{{ $rack->id }}">{{ $rack->name }} @if($rack->room) ({{ $rack->room->name }}) @endif</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <input type="text" name="position_codes[{{ $book->id }}]" class="form-input w-24 text-sm" placeholder="A1-01">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="submit" class="rounded-xl bg-primary-700 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-800">
+                            ? Konfirmasi Routing
+                        </button>
+                    </div>
+                </form>
+            @endif
+            <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-800">
+                    ?? Sudah Di-route Hari Ini: <strong>{{ $routedToday }}</strong> buku
+                </p>
+            </div>
+        </div>
+    </div> 
+    {{-- GROUPING PANEL --}}
+    <div data-tab-panel="grouping" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Grouping Buku</h2>
+            <p class="mb-6 text-sm text-gray-500">Kelompokkan buku yang sudah di-review berdasarkan kategori sebelum routing ke rak.</p>
+            @php
+                $inboxApproved = \App\Models\BookInbox::approved()->latest()->limit(50)->get();
+                $groupedInbox = $inboxApproved->groupBy("category");
+            @endphp
+            @if($inboxApproved->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Belum ada buku yang di-approve.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <div class="space-y-4">
+                    @foreach($groupedInbox as $cat => $books)
+                        <div class="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800">{{ $cat ?: "Tanpa Kategori" }} <span class="text-xs font-normal text-gray-400">({{ $books->count() }} buku)</span></h3>
+                                <button type="button" class="rounded-lg bg-primary-700 px-3 py-1 text-xs font-semibold text-white" onclick="document.querySelector(`[data-tab-trigger=routing]`).click()">&#10140; Route ke Rak</button>
+                            </div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                @foreach($books as $book)
+                                    <div class="flex items-center gap-3 rounded-lg bg-white p-3 text-sm">
+                                        <span class="shrink-0 text-lg">??</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate font-medium">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }} &middot; {{ $book->isbn }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{-- ROUTING PANEL --}}
+    <div data-tab-panel="routing" class="hidden">
+        <div class="rounded-[1.4rem] border border-gray-200 bg-white p-6">
+            <h2 class="mb-1 text-lg font-bold text-gray-900">?? Routing Buku ke Rak</h2>
+            <p class="mb-6 text-sm text-gray-500">Tempatkan buku yang sudah disetujui ke rak fisik perpustakaan.</p>
+            @php
+                $routableBooks = \App\Models\BookInbox::whereIn("status", ["approved"])->latest()->limit(50)->get();
+                $allRacks = \App\Models\Rack::with("room")->orderBy("name")->get();
+                $routedToday = \App\Models\BookInbox::routed()->whereDate("routed_at", today())->count();
+            @endphp
+            @if($routableBooks->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
+                    <p class="text-4xl">??</p>
+                    <p class="mt-3 text-sm font-medium text-gray-500">Tidak ada buku yang perlu di-route.</p>
+                    <p class="text-xs text-gray-400">Approve buku dari tab Review terlebih dahulu.</p>
+                </div>
+            @else
+                <form method="POST" action="{{ route("books.import.route-books") }}" class="space-y-4">
+                    @csrf
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                <tr>
+                                    <th class="p-3"><input type="checkbox" id="select-all-routing" class="rounded"></th>
+                                    <th class="p-3">Buku</th>
+                                    <th class="p-3">Kategori</th>
+                                    <th class="p-3">Rak Tujuan</th>
+                                    <th class="p-3">Posisi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($routableBooks as $book)
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="p-3"><input type="checkbox" name="book_ids[]" value="{{ $book->id }}" class="routing-checkbox rounded"></td>
+                                        <td class="p-3">
+                                            <p class="font-medium text-gray-900">{{ $book->title }}</p>
+                                            <p class="text-xs text-gray-400">{{ $book->author }}</p>
+                                        </td>
+                                        <td class="p-3"><span class="rounded-full bg-gray-100 px-2 py-1 text-xs">{{ $book->category ?: "-" }}</span></td>
+                                        <td class="p-3">
+                                            <select name="rack_ids[{{ $book->id }}]" class="form-input w-40 text-sm">
+                                                <option value="">-- Pilih Rak --</option>
+                                                @foreach($allRacks as $rack)
+                                                    <option value="{{ $rack->id }}">{{ $rack->name }} @if($rack->room) ({{ $rack->room->name }}) @endif</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                        <td class="p-3">
+                                            <input type="text" name="position_codes[{{ $book->id }}]" class="form-input w-24 text-sm" placeholder="A1-01">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-4">
+                        <button type="submit" class="rounded-xl bg-primary-700 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-800">
+                            ? Konfirmasi Routing
+                        </button>
+                    </div>
+                </form>
+            @endif
+            <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-sm font-semibold text-emerald-800">
+                    ?? Sudah Di-route Hari Ini: <strong>{{ $routedToday }}</strong> buku
+                </p>
+            </div>
+        </div>
+    </div></template>
 @endsection
 
 @push('scripts')

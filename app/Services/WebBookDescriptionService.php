@@ -10,7 +10,7 @@ class WebBookDescriptionService
     public function __construct(
         private readonly TavilySearchService $searchService,
         private readonly WebContentExtractorService $contentExtractorService,
-        private readonly OllamaService $ollamaService,
+        private readonly GeminiService $geminiService,
         private readonly AppSettingsService $settingsService
     ) {
     }
@@ -52,7 +52,7 @@ class WebBookDescriptionService
             $maxResults, 
             $domains, 
             $cacheKey, 
-            fn(array $contexts) => $this->ollamaService->extractBookDescriptionFromWeb($cleanTitle, $cleanAuthor, $contexts),
+            fn(array $contexts) => $this->geminiService->extractBookDescriptionFromWeb($cleanTitle, $cleanAuthor, $contexts),
             function(array $extracted) use ($cleanTitle) {
                 $description = $this->clean($extracted['description'] ?? null);
                 if (! $description) {
@@ -85,7 +85,7 @@ class WebBookDescriptionService
             $maxResults,
             null,
             $cacheKey,
-            fn(array $contexts) => $this->ollamaService->extractBookInfoFromWebByIsbn($cleanIsbn, $contexts),
+            fn(array $contexts) => $this->geminiService->extractBookInfoFromWebByIsbn($cleanIsbn, $contexts),
             function(array $extracted) {
                 $title = $this->clean($extracted['title'] ?? null);
                 if (! $title) {
@@ -153,7 +153,7 @@ class WebBookDescriptionService
         try {
             $extracted = $extractClosure($contexts);
         } catch (\RuntimeException $e) {
-            Log::warning('websearch.extraction.ollama_failed', ['error' => $e->getMessage()]);
+            Log::warning('websearch.extraction.gemini_failed', ['error' => $e->getMessage()]);
             $extracted = null;
         }
 

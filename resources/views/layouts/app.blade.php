@@ -26,14 +26,22 @@
             ['route' => 'racks.index',       'label' => 'Library Map',   'match' => 'racks.*',            'icon' => 'map'],
             ['route' => 'categories.index',  'label' => 'Categories',    'match' => 'categories.*',       'icon' => 'tag'],
             ['route' => 'books.import',      'label' => 'Smart Ingest',  'match' => 'books.import*',      'icon' => 'ingest'],
+            ['route' => 'book-scanner.index', 'label' => 'Book Scanner','match' => 'book-scanner*',      'icon' => 'scan'],
             ['route' => 'borrowings.index',  'label' => 'Borrowing',     'match' => 'borrowings.*|scanner', 'icon' => 'book'],
             ['route' => 'members.index',     'label' => 'Members',       'match' => 'members.*',           'icon' => 'members'],
             ['route' => 'settings.index',    'label' => 'Settings',      'match' => 'settings.*',         'icon' => 'settings'],
         ];
 
+        if (auth()->user()?->role?->value === 'admin') {
+            $navItems[] = ['route' => 'admin.observability.index', 'label' => 'Observability', 'match' => 'admin.observability.*', 'icon' => 'chart'];
+        }
+
         $breadcrumbs = match (true) {
             request()->routeIs('dashboard') => [
                 ['label' => 'Dashboard', 'url' => route('dashboard')],
+            ],
+            request()->routeIs('admin.observability.*') => [
+                ['label' => 'Observability', 'url' => route('admin.observability.index')],
             ],
             request()->routeIs('books.index'), request()->routeIs('books.web.show'), request()->routeIs('books.web.panel') => array_values(array_filter([
                 ['label' => 'Search Book', 'url' => route('books.index')],

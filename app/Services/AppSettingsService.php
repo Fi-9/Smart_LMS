@@ -19,12 +19,8 @@ class AppSettingsService
     {
         return [
             'google_books_api_key' => $this->get('google_books.api_key', config('services.google_books.api_key')),
-            'ollama_base_url' => $this->get('ai.ollama.base_url', config('services.ollama.base_url')),
-            'ollama_vision_model' => $this->get('ai.ollama.vision_model', config('services.ollama.vision_model')),
-            'ollama_text_model' => $this->get('ai.ollama.text_model', config('services.ollama.text_model')),
-            'ollama_web_model' => $this->get('ai.ollama.web_model', config('services.ollama.web_model')),
-            'ollama_timeout' => $this->getInt('ai.ollama.timeout', (int) config('services.ollama.timeout', 240)),
-            'ollama_connect_timeout' => $this->getInt('ai.ollama.connect_timeout', (int) config('services.ollama.connect_timeout', 10)),
+            'n8n_base_url' => $this->get('ai.n8n.base_url', config('services.n8n.base_url')),
+            'n8n_api_key' => $this->get('ai.n8n.api_key', config('services.n8n.api_key')),
             'websearch_enabled' => $this->getBool('ai.websearch.enabled', (bool) config('services.websearch.enabled', false)),
             'tavily_api_key' => $this->get('ai.websearch.tavily_api_key', config('services.tavily.api_key')),
             'tavily_base_url' => $this->get('ai.websearch.tavily_base_url', config('services.tavily.base_url')),
@@ -122,6 +118,7 @@ class AppSettingsService
         return [
             'google_books_api_key' => $this->maskSecret($settings['google_books_api_key']),
             'tavily_api_key' => $this->maskSecret($settings['tavily_api_key']),
+            'n8n_api_key' => $this->maskSecret($settings['n8n_api_key']),
         ];
     }
 
@@ -151,6 +148,7 @@ class AppSettingsService
         return in_array($key, [
             'google_books.api_key',
             'ai.websearch.tavily_api_key',
+            'ai.n8n.api_key',
         ], true);
     }
 

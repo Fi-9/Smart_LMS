@@ -38,11 +38,25 @@ class AuthenticatedSessionController extends Controller
             $request->session()->regenerateToken();
 
             throw ValidationException::withMessages([
-                'email' => 'Akun ini tidak memiliki akses ke panel admin.',
+                'email' => 'Akun ini tidak memiliki akses ke panel.',
             ]);
         }
 
-        return redirect()->intended(route('dashboard'));
+        // Redirect based on login type (direct, not intended)
+        $loginType = $request->input('login_type', 'admin');
+
+        if ($loginType === 'petugas') {
+            return redirect()->to(route('book-scanner.index'));
+        }
+
+        // Admin role check for admin login
+        if (! $user->hasRole(\App\Enums\UserRole::ADMIN)) {
+            throw ValidationException::withMessages([
+                'email' => 'Akun staff tidak memiliki akses ke panel admin. Gunakan tab "Petugas Scan" untuk masuk.',
+            ]);
+        }
+
+        return redirect()->to(route('dashboard'));
     }
 
     public function destroy(Request $request): RedirectResponse

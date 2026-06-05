@@ -1,0 +1,266 @@
+{
+  "name": "SmartLMS Vision + Websearch Fallback",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smartlms-vision",
+        "responseMode": "lastNode",
+        "options": {
+          "rawBody": true,
+          "binaryData": true,
+          "binaryPropertyName": "data"
+        }
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst binary = item.binary || {};\nconst imageKey = Object.keys(binary).find((key) => binary[key]?.mimeType?.startsWith('image/'));\nif (!imageKey) {\n  throw new Error('No image binary found in webhook payload');\n}\nconst image = binary[imageKey];\nreturn [{\n  json: {\n    imageKey,\n    mimeType: image.mimeType || 'image/jpeg'\n  },\n  binary: item.binary\n}];"
+      },
+      "id": "pickBinary",
+      "name": "Pick Image Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst imageKey = item.json.imageKey;\nconst image = item.binary?.[imageKey];\nconst base64 = image?.data;\nif (!base64) {\n  throw new Error('Image payload is empty');\n}\nconst prompt = `You are a librarian cataloguing system. Analyze the uploaded book cover image. Return ONLY valid JSON with this shape: {\\n  \"isbn\": null,\\n  \"title\": null,\\n  \"author\": null,\\n  \"publisher\": null,\\n  \"category\": null\\n}`;\nreturn [{\n  json: {\n    contents: [{\n      role: 'user',\n      parts: [\n        { text: prompt },\n        {\n          inline_data: {\n            mime_type: item.json.mimeType || 'image/jpeg',\n            data: base64\n          }\n        }\n      ]\n    }]\n  }\n}];"
+      },
+      "id": "buildGeminiPayload",
+      "name": "Build Gemini Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "callGemini",
+      "name": "Call Gemini Vision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json;\nconst text = body?.candidates?.[0]?.content?.parts?.[0]?.text || '';\nlet parsed = {};\nconst clean = text.replace(/```json\\n?|```/g, '').trim();\ntry {\n  parsed = JSON.parse(clean);\n} catch (error) {\n  const match = clean.match(/\\{[\\s\\S]*\\}/);\n  if (match) {\n    parsed = JSON.parse(match[0]);\n  }\n}\nconst title = typeof parsed.title === 'string' ? parsed.title.trim() : null;\nconst author = typeof parsed.author === 'string' ? parsed.author.trim() : null;\nconst isbn = typeof parsed.isbn === 'string' ? parsed.isbn.replace(/[^0-9Xx]/g, '') : null;\nconst queryTitle = title ? `intitle:${title}` : null;\nconst googleUrl = isbn\n  ? `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`\n  : (queryTitle ? `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(queryTitle + (author ? ' inauthor:' + author : ''))}&maxResults=3` : null);\nconst openLibraryUrl = isbn\n  ? `https://openlibrary.org/isbn/${isbn}.json`\n  : (title ? `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}${author ? `&author=${encodeURIComponent(author)}` : ''}&limit=1` : null);\nconst websearchQuery = title\n  ? `Buku ${title}${author ? ' ' + author : ''} site:gramedia.com OR site:gramedia.digital`\n  : null;\nreturn [{\n  json: {\n    gemini: parsed,\n    googleUrl,\n    openLibraryUrl,\n    websearchQuery\n  }\n}];"
+      },
+      "id": "prepareLookups",
+      "name": "Prepare Lookups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.googleUrl || ''}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "ifGoogle",
+      "name": "Has Google URL",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1280, 220]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.googleUrl}}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "googleBooks",
+      "name": "Google Books",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1480, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.openLibraryUrl || ''}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "ifOpenLibrary",
+      "name": "Has Open Library URL",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1280, 360]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.openLibraryUrl}}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "openLibrary",
+      "name": "Open Library",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1480, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.websearchQuery || ''}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "ifWebsearch",
+      "name": "Has Websearch Query",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1280, 520]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.TAVILY_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.websearchQuery, max_results: 3, search_depth: 'basic', include_answer: false, include_raw_content: false, include_images: false }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "tavilySearch",
+      "name": "Tavily Websearch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1490, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "mergeInputs",
+      "name": "Merge Inputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1720, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const entries = $input.all().map((item) => item.json || {});\nconst root = entries.find((entry) => entry.gemini) || {};\nconst gemini = root.gemini || {};\nconst googleRaw = entries.find((entry) => Array.isArray(entry.items));\nconst openLibraryRaw = entries.find((entry) => entry.title || entry.publishers || Array.isArray(entry.docs));\nconst tavilyRaw = entries.find((entry) => Array.isArray(entry.results));\n\nlet google = {};\nif (googleRaw?.items?.length) {\n  const info = googleRaw.items[0]?.volumeInfo || {};\n  let isbn = null;\n  for (const identifier of info.industryIdentifiers || []) {\n    if (identifier?.identifier) {\n      isbn = String(identifier.identifier).replace(/[^0-9Xx]/g, '');\n      if ((identifier.type || '').toUpperCase() === 'ISBN_13') break;\n    }\n  }\n  google = {\n    title: info.title || null,\n    author: Array.isArray(info.authors) ? info.authors.join(', ') : null,\n    isbn,\n    publisher: info.publisher || null,\n    published_year: info.publishedDate ? parseInt(String(info.publishedDate).substring(0, 4), 10) : null,\n    description: info.description || null,\n    category: Array.isArray(info.categories) ? info.categories[0] : null,\n    cover_url: info.imageLinks?.thumbnail ? String(info.imageLinks.thumbnail).replace('http://', 'https://') : null,\n    source: 'google'\n  };\n}\n\nlet openLibrary = {};\nif (Array.isArray(openLibraryRaw?.docs) && openLibraryRaw.docs.length) {\n  const doc = openLibraryRaw.docs[0];\n  openLibrary = {\n    title: doc.title || null,\n    author: Array.isArray(doc.author_name) ? doc.author_name.join(', ') : null,\n    isbn: Array.isArray(doc.isbn) ? String(doc.isbn[0]).replace(/[^0-9Xx]/g, '') : null,\n    publisher: Array.isArray(doc.publisher) ? doc.publisher[0] : null,\n    published_year: doc.first_publish_year || null,\n    description: null,\n    category: Array.isArray(doc.subject) ? doc.subject[0] : null,\n    cover_url: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,\n    source: 'openlibrary'\n  };\n} else if (openLibraryRaw?.title) {\n  openLibrary = {\n    title: openLibraryRaw.title || null,\n    author: Array.isArray(openLibraryRaw.authors) ? openLibraryRaw.authors.map((entry) => entry?.name || entry).join(', ') : null,\n    isbn: Array.isArray(openLibraryRaw.isbn_13) ? String(openLibraryRaw.isbn_13[0]).replace(/[^0-9Xx]/g, '') : (gemini.isbn || null),\n    publisher: Array.isArray(openLibraryRaw.publishers) ? openLibraryRaw.publishers[0] : null,\n    published_year: openLibraryRaw.publish_date || null,\n    description: typeof openLibraryRaw.description === 'string' ? openLibraryRaw.description : openLibraryRaw.description?.value || null,\n    category: null,\n    cover_url: Array.isArray(openLibraryRaw.covers) && openLibraryRaw.covers[0] ? `https://covers.openlibrary.org/b/id/${openLibraryRaw.covers[0]}-M.jpg` : null,\n    source: 'openlibrary'\n  };\n}\n\nlet websearch = {};\nif (Array.isArray(tavilyRaw?.results) && tavilyRaw.results.length) {\n  const top = tavilyRaw.results[0];\n  websearch = {\n    description: top.content || null,\n    source_url: top.url || null,\n    source: 'websearch'\n  };\n}\n\nconst pick = (...values) => values.find((value) => value !== null && value !== undefined && value !== '') || null;\nconst book = {\n  title: pick(google.title, openLibrary.title, gemini.title),\n  author: pick(google.author, openLibrary.author, gemini.author),\n  isbn: pick(google.isbn, openLibrary.isbn, gemini.isbn),\n  publisher: pick(google.publisher, openLibrary.publisher, gemini.publisher),\n  published_year: pick(google.published_year, openLibrary.published_year, null),\n  description: pick(google.description, openLibrary.description, websearch.description, null),\n  category: pick(google.category, openLibrary.category, gemini.category),\n  cover_url: pick(google.cover_url, openLibrary.cover_url, null),\n  source_url: pick(websearch.source_url, null)\n};\nconst hasCoreData = Boolean(book.title || book.author || book.isbn);\nreturn [{\n  json: {\n    found: hasCoreData,\n    source: book.description && !google.description && !openLibrary.description ? 'websearch' : (google.title || google.isbn ? 'google' : (openLibrary.title || openLibrary.isbn ? 'openlibrary' : 'gemini')),\n    book,\n    sources_used: {\n      gemini_vision: true,\n      google_books: Boolean(google.title || google.isbn),\n      openlibrary: Boolean(openLibrary.title || openLibrary.isbn),\n      websearch: Boolean(websearch.description)\n    }\n  }\n}];"
+      },
+      "id": "mergeJson",
+      "name": "Merge To JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1940, 360]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2140, 360]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Pick Image Binary", "type": "main", "index": 0 }]]
+    },
+    "Pick Image Binary": {
+      "main": [[{ "node": "Build Gemini Payload", "type": "main", "index": 0 }]]
+    },
+    "Build Gemini Payload": {
+      "main": [[{ "node": "Call Gemini Vision", "type": "main", "index": 0 }]]
+    },
+    "Call Gemini Vision": {
+      "main": [[{ "node": "Prepare Lookups", "type": "main", "index": 0 }]]
+    },
+    "Prepare Lookups": {
+      "main": [
+        [{ "node": "Has Google URL", "type": "main", "index": 0 }],
+        [{ "node": "Has Open Library URL", "type": "main", "index": 0 }],
+        [{ "node": "Has Websearch Query", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Google URL": {
+      "main": [
+        [{ "node": "Google Books", "type": "main", "index": 0 }],
+        [{ "node": "Merge Inputs", "type": "main", "index": 0 }]
+      ]
+    },
+    "Google Books": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 1 }]]
+    },
+    "Has Open Library URL": {
+      "main": [
+        [{ "node": "Open Library", "type": "main", "index": 0 }],
+        [{ "node": "Merge Inputs", "type": "main", "index": 2 }]
+      ]
+    },
+    "Open Library": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 3 }]]
+    },
+    "Has Websearch Query": {
+      "main": [
+        [{ "node": "Tavily Websearch", "type": "main", "index": 0 }],
+        [{ "node": "Merge Inputs", "type": "main", "index": 4 }]
+      ]
+    },
+    "Tavily Websearch": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 5 }]]
+    },
+    "Merge Inputs": {
+      "main": [[{ "node": "Merge To JSON", "type": "main", "index": 0 }]]
+    },
+    "Merge To JSON": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "pinData": {},
+  "versionId": "3.0.0",
+  "active": false,
+  "tags": ["smartlms", "vision", "websearch"]
+}

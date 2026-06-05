@@ -37,7 +37,7 @@ class AiBookScanApiTest extends TestCase
     public function test_uses_default_full_mode_when_mode_not_provided(): void
     {
         $user = User::factory()->create(['role' => UserRole::ADMIN->value]);
-        $file = UploadedFile::fake()->image('cover.jpg');
+        $file = UploadedFile::fake()->create('cover.jpg', 10, 'image/jpeg');
 
         $this->mock(AiBookScanPipelineService::class, function ($mock): void {
             $mock->shouldReceive('scan')
@@ -69,7 +69,7 @@ class AiBookScanApiTest extends TestCase
     public function test_passes_simple_mode_to_pipeline(): void
     {
         $user = User::factory()->create(['role' => UserRole::STAFF->value]);
-        $file = UploadedFile::fake()->image('front.png');
+        $file = UploadedFile::fake()->create('front.png', 10, 'image/png');
 
         $this->mock(AiBookScanPipelineService::class, function ($mock): void {
             $mock->shouldReceive('scan')
@@ -101,12 +101,12 @@ class AiBookScanApiTest extends TestCase
     public function test_returns_bad_gateway_when_pipeline_throws_runtime_exception(): void
     {
         $user = User::factory()->create(['role' => UserRole::ADMIN->value]);
-        $file = UploadedFile::fake()->image('cover.webp');
+        $file = UploadedFile::fake()->create('cover.webp', 10, 'image/webp');
 
         $this->mock(AiBookScanPipelineService::class, function ($mock): void {
             $mock->shouldReceive('scan')
                 ->once()
-                ->andThrow(new RuntimeException('Ollama timeout'));
+                ->andThrow(new RuntimeException('Gemini API timeout'));
         });
 
         $response = $this->actingAs($user)->post('/api/ai/books/scan', [
@@ -114,7 +114,7 @@ class AiBookScanApiTest extends TestCase
         ]);
 
         $response->assertStatus(502);
-        $response->assertJsonPath('message', 'Ollama timeout');
+        $response->assertJsonPath('message', 'Gemini API timeout');
     }
 
     protected function tearDown(): void

@@ -20,6 +20,7 @@ return new class extends Migration
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->text('address')->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index('name');
             $table->index('class');

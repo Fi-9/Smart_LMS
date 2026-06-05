@@ -41,16 +41,6 @@ return [
         'cache_miss_minutes' => (int) env('GOOGLE_BOOKS_CACHE_MISS_MINUTES', 15),
     ],
 
-    'ollama' => [
-        'base_url' => env('OLLAMA_BASE_URL', 'http://192.168.100.200:11434'),
-        'model' => env('OLLAMA_MODEL', 'qwen2.5:32b'),
-        'vision_model' => env('OLLAMA_VISION_MODEL', env('OLLAMA_MODEL', 'pixtral')),
-        'text_model' => env('OLLAMA_TEXT_MODEL', env('OLLAMA_MODEL', 'qwen2.5:32b')),
-        'web_model' => env('OLLAMA_WEB_MODEL', env('OLLAMA_TEXT_MODEL', env('OLLAMA_MODEL', 'llama3.1:latest'))),
-        'timeout' => (int) env('OLLAMA_TIMEOUT', 240),
-        'connect_timeout' => (int) env('OLLAMA_CONNECT_TIMEOUT', 10),
-    ],
-
     'websearch' => [
         'enabled' => (bool) env('WEBSEARCH_ENABLED', false),
         'base_url' => env('TAVILY_BASE_URL', 'https://api.tavily.com'),
@@ -76,8 +66,26 @@ return [
         'cover_height' => (int) env('AI_COVER_HEIGHT', 900),
     ],
 
+    'n8n' => [
+        'base_url' => env('N8N_BASE_URL', 'http://localhost:5678'),
+        'api_key' => env('N8N_API_KEY', ''),
+        'timeout' => (int) env('N8N_TIMEOUT', 240),
+        'webhook_gemini_text' => env('N8N_WEBHOOK_GEMINI_TEXT', 'gemini-text'),
+        'webhook_gemini_vision' => env('N8N_WEBHOOK_GEMINI_VISION', 'gemini-vision'),
+        'webhook_smartlms_vision' => env('N8N_WEBHOOK_SMARTLMS_VISION', 'smartlms-vision'),
+    ],
+
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'api_keys' => env('GEMINI_API_KEYS'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'vision_model' => env('GEMINI_VISION_MODEL', 'gemini-2.5-flash'),
+        'temperature' => (float) env('GEMINI_TEMPERATURE', 0),
+        'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 1200),
+    ],
+
     'ai_runtime' => [
-        'profile' => env('AI_RUNTIME_PROFILE', 'local-ollama'),
+        'profile' => env('AI_RUNTIME_PROFILE', 'n8n-gemini'),
         'default_scan_mode' => env('AI_SCAN_DEFAULT_MODE', 'auto'),
     ],
 

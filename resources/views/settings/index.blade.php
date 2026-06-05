@@ -3,15 +3,15 @@
 @section('content')
     <div class="mb-6">
         <h1 class="page-title">AI Settings</h1>
-        <p class="page-subtitle">Atur koneksi Ollama, Tavily, dan default scan mode langsung dari panel admin.</p>
+        <p class="page-subtitle">Atur koneksi n8n + Gemini, Tavily, dan default scan mode langsung dari panel admin.</p>
     </div>
 
     <div class="mb-6 grid gap-4 xl:grid-cols-4">
         <div class="rounded-[1.25rem] border border-gray-200 bg-white p-5">
-            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Ollama</p>
-            <h3 class="mt-2 text-lg font-bold text-gray-900">{{ strtoupper($ai_diagnostics['ollama']['status'] ?? 'unknown') }}</h3>
-            <p class="mt-2 text-sm text-gray-600">{{ $ai_diagnostics['ollama']['detail'] ?? '' }}</p>
-            <p class="mt-2 text-xs text-gray-500">{{ $ai_diagnostics['ollama']['endpoint'] ?? '-' }}</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">n8n + Gemini</p>
+            <h3 class="mt-2 text-lg font-bold text-gray-900">{{ strtoupper($ai_diagnostics['n8n']['status'] ?? 'unknown') }}</h3>
+            <p class="mt-2 text-sm text-gray-600">{{ $ai_diagnostics['n8n']['detail'] ?? '' }}</p>
+            <p class="mt-2 text-xs text-gray-500">{{ $ai_diagnostics['n8n']['endpoint'] ?? '-' }}</p>
         </div>
         <div class="rounded-[1.25rem] border border-gray-200 bg-white p-5">
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Tavily</p>
@@ -44,37 +44,25 @@
         @csrf
         <div class="grid gap-6 xl:grid-cols-2">
             <section class="rounded-[1.5rem] border border-gray-200 bg-white p-6">
-                <h2 class="text-lg font-bold text-gray-900">Ollama Runtime</h2>
-                <p class="mt-1 text-sm text-gray-500">Pengaturan koneksi utama untuk vision dan text model.</p>
+                <h2 class="text-lg font-bold text-gray-900">n8n + Gemini Runtime</h2>
+                <p class="mt-1 text-sm text-gray-500">n8n menjembatani Gemini API untuk vision dan text processing.</p>
 
                 <div class="mt-5 grid gap-4">
                     <div>
-                        <label class="form-label">Base URL</label>
-                        <input type="url" name="ollama_base_url" value="{{ old('ollama_base_url', $settings['ollama_base_url']) }}" class="form-input" placeholder="http://127.0.0.1:11434">
-                    </div>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label class="form-label">Vision Model</label>
-                            <input type="text" name="ollama_vision_model" value="{{ old('ollama_vision_model', $settings['ollama_vision_model']) }}" class="form-input" placeholder="gemma4:26b">
-                        </div>
-                        <div>
-                            <label class="form-label">Text Model</label>
-                            <input type="text" name="ollama_text_model" value="{{ old('ollama_text_model', $settings['ollama_text_model']) }}" class="form-input" placeholder="gemma4-id:26b">
-                        </div>
+                        <label class="form-label">n8n Base URL</label>
+                        <input type="text" name="n8n_base_url" value="{{ old('n8n_base_url', $settings['n8n_base_url']) }}" class="form-input" placeholder="http://localhost:5678">
                     </div>
                     <div>
-                        <label class="form-label">Web Summary Model</label>
-                        <input type="text" name="ollama_web_model" value="{{ old('ollama_web_model', $settings['ollama_web_model']) }}" class="form-input" placeholder="gemma4-id:26b">
+                        <label class="form-label">n8n API Key (JWT Token)</label>
+                        <input type="password" name="n8n_api_key" value="{{ old('n8n_api_key', $settings['n8n_api_key']) }}" class="form-input" placeholder="{{ $masked_settings['n8n_api_key'] ?? 'eyJh...' }}">
+                        <p class="mt-1 text-xs text-gray-400">Dari n8n Settings → Public API → Generate API Key.</p>
                     </div>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label class="form-label">Timeout</label>
-                            <input type="number" name="ollama_timeout" value="{{ old('ollama_timeout', $settings['ollama_timeout']) }}" class="form-input" min="30" max="600">
-                        </div>
-                        <div>
-                            <label class="form-label">Connect Timeout</label>
-                            <input type="number" name="ollama_connect_timeout" value="{{ old('ollama_connect_timeout', $settings['ollama_connect_timeout']) }}" class="form-input" min="1" max="60">
-                        </div>
+                    <div class="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+                        <strong>Webhook yang perlu ada di n8n:</strong>
+                        <ul class="mt-1 list-inside list-disc">
+                            <li><code class="text-blue-900">/webhook/gemini-text</code> — Text generation & translation</li>
+                            <li><code class="text-blue-900">/webhook/gemini-vision</code> — Vision / cover image analysis</li>
+                        </ul>
                     </div>
                 </div>
             </section>
