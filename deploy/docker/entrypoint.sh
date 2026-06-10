@@ -23,4 +23,7 @@ if [ "${APP_ENV:-production}" = "production" ]; then
     php artisan view:cache --no-interaction
 fi
 
+# Run database migrations automatically on startup
+php artisan migrate --force --no-interaction
+
 exec "$@"
