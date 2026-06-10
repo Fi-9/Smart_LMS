@@ -109,25 +109,90 @@ class MobileScanController extends Controller
     {
         $validated = $request->validate([
             'isbn' => ['required', 'string', 'max:20'],
+            'priority' => ['nullable', 'string', 'in:normal,high,urgent'],
+            'force' => ['nullable', 'string'],
         ]);
+
+        $sessionId = $this->currentSessionId();
+        if (!$sessionId) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Belum ada sesi scan aktif hari ini.',
+            ], 400);
+        }
 
         $isbn = preg_replace('/[^0-9Xx]/', '', $validated['isbn']);
 
-        $book = $this->isbnLookupService->lookup($isbn);
-        if ($book) {
-            return response()->json([
-                'found' => true,
-                'source' => $book['source'] ?? 'api',
-                'book' => $this->normalizeLookup($book, $isbn),
-            ]);
+        // Check for duplicate scan jobs
+        $force = filter_var($request->input('force', false), FILTER_VALIDATE_BOOLEAN);
+        if (!$force) {
+            $duplicate = ScanJob::query()
+                ->where('scan_session_id', $sessionId)
+                ->where('status', '!=', 'failed')
+                ->where(function ($q) use ($isbn) {
+                    $q->where('identification_result->isbn', $isbn);
+                })
+                ->first();
+
+            if ($duplicate) {
+                return response()->json([
+                    'warning' => 'duplicate_detected',
+                    'message' => 'Buku dengan ISBN ini kemungkinan sudah pernah dipindai.',
+                    'duplicate_job_id' => $duplicate->id,
+                ]);
+            }
         }
 
-        // Both failed — return empty template with ISBN for manual fill
-        return response()->json([
-            'found' => false,
+        // Create ScanJob record for staged processing pipeline
+        // Bypasses Stage 1 (Identification) because identification_result is pre-populated.
+        $scanJob = ScanJob::query()->create([
+            'scan_session_id' => $sessionId,
             'isbn' => $isbn,
-            'book' => ['isbn' => $isbn, 'source' => 'manual'],
+            'scan_source' => 'isbn',
+            'front_cover_path' => '',
+            'back_cover_path' => null,
+            'front_cover_hash' => null,
+            'back_cover_hash' => null,
+            'priority' => $request->input('priority', 'normal'),
+            'status' => 'waiting',
+            'attempts' => 0,
+            'current_stage' => 'lookup',
+            'stage_status' => 'waiting',
+            'identification_result' => [
+                'isbn' => $isbn,
+                'title' => null,
+                'author' => null,
+                'publisher_hint' => null,
+                'category' => null,
+                'description_back_cover' => null,
+            ]
         ]);
+
+        // Calculate dynamic queue number
+        $queueNumber = ScanJob::query()
+            ->where('status', 'waiting')
+            ->where('id', '<=', $scanJob->id)
+            ->count();
+
+        // Increment stats on the session table
+        \Illuminate\Support\Facades\DB::transaction(function () use ($sessionId) {
+            $session = ScanSession::find($sessionId);
+            if ($session) {
+                $session->increment('total_books');
+                $session->increment('waiting_count');
+            }
+        });
+
+        // Dispatch background worker ProcessBookScanJob
+        ProcessBookScanJob::dispatch($scanJob->id);
+
+        return response()->json([
+            'found' => true,
+            'queued' => true,
+            'scan_job_id' => $scanJob->id,
+            'queue_number' => $queueNumber,
+            'message' => 'ISBN masuk antrean.',
+        ], 202);
     }
 
     // ────────────────────────────────────────────
@@ -230,6 +295,27 @@ class MobileScanController extends Controller
             // Step 3: Merge — prefer enriched data, fill gaps from vision
             $merged = $this->mergeMetadata($best, $enriched, $frontPath, $backPath);
 
+            $cleanIsbn = preg_replace('/[^0-9Xx]/', '', $merged['isbn'] ?? '');
+            $hasExistingBook = false;
+            $existingBookTitle = null;
+            if (!empty($cleanIsbn)) {
+                $existingBook = \App\Models\Book::where('isbn', $cleanIsbn)->first();
+                if ($existingBook) {
+                    $hasExistingBook = true;
+                    $existingBookTitle = $existingBook->title;
+                }
+            }
+
+            $sourceChain = [
+                'identification' => $best,
+                'google' => $enriched['google'] ?? null,
+                'openlibrary' => $enriched['openlibrary'] ?? null,
+                'cache_hit' => false,
+                'final_source' => $merged['source'] ?? 'gemini_vision',
+                'has_existing_book' => $hasExistingBook,
+                'existing_book_title' => $existingBookTitle,
+            ];
+
             // Save to inbox
             $inbox = BookInbox::query()->create([
                 'scan_session_id' => $this->currentSessionId(),
@@ -249,6 +335,7 @@ class MobileScanController extends Controller
                 'confidence' => $merged['confidence'],
                 'status' => 'pending',
                 'scan_data' => ['vision_raw' => $visionResult, 'enriched' => $enriched],
+                'source_chain' => $sourceChain,
             ]);
 
             $this->incrementSessionCount();
@@ -335,6 +422,8 @@ class MobileScanController extends Controller
         // Create ScanJob record (Fase 2)
         $scanJob = ScanJob::query()->create([
             'scan_session_id' => $sessionId,
+            'isbn' => null,
+            'scan_source' => 'camera',
             'front_cover_path' => $frontPath,
             'back_cover_path' => $backPath,
             'front_cover_hash' => $frontHash,
@@ -393,14 +482,11 @@ class MobileScanController extends Controller
         if ($completedJobs->isNotEmpty()) {
             $inboxes = BookInbox::query()
                 ->where('scan_session_id', $sessionId)
+                ->whereIn('scan_job_id', $completedJobs->pluck('id'))
                 ->get();
             
             foreach ($completedJobs as $job) {
-                $base = basename($job->front_cover_path);
-                $match = $inboxes->first(function ($inbox) use ($job, $base) {
-                    return $inbox->cover_front_path === $job->front_cover_path ||
-                           ($inbox->cover_front_path && str_contains($inbox->cover_front_path, $base));
-                });
+                $match = $inboxes->firstWhere('scan_job_id', $job->id);
                 if ($match) {
                     $inboxMap[$job->id] = [
                         'inbox_id' => $match->id,
@@ -413,6 +499,12 @@ class MobileScanController extends Controller
                         'description' => $match->description,
                         'status' => $match->status, // 'approved', 'pending'
                         'confidence_score' => $match->confidence_score,
+                        'source' => $match->source,
+                        'source_chain' => $match->source_chain,
+                        'processing_notes' => $match->processing_notes,
+                        'cover_front_path' => $match->cover_front_path,
+                        'metadata_completeness' => $match->metadata_completeness,
+                        'metadata_missing' => $match->metadata_missing,
                     ];
                 }
             }
@@ -441,6 +533,12 @@ class MobileScanController extends Controller
                 $data['book_description'] = $inboxMap[$job->id]['description'];
                 $data['inbox_status'] = $inboxMap[$job->id]['status'];
                 $data['confidence_score'] = $inboxMap[$job->id]['confidence_score'];
+                $data['source'] = $inboxMap[$job->id]['source'];
+                $data['source_chain'] = $inboxMap[$job->id]['source_chain'] ?? null;
+                $data['processing_notes'] = $inboxMap[$job->id]['processing_notes'] ?? null;
+                $data['book_cover_front'] = $inboxMap[$job->id]['cover_front_path'] ?? null;
+                $data['metadata_completeness'] = $inboxMap[$job->id]['metadata_completeness'] ?? null;
+                $data['metadata_missing'] = $inboxMap[$job->id]['metadata_missing'] ?? null;
             }
 
             return $data;
@@ -460,6 +558,13 @@ class MobileScanController extends Controller
 
     public function retryJob(ScanJob $job): JsonResponse
     {
+        if ($job->scanSession->user_id !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Unauthorized. Pekerjaan ini bukan milik sesi Anda.',
+            ], 403);
+        }
+
         if ($job->status !== 'failed') {
             return response()->json([
                 'success' => false,
@@ -528,31 +633,56 @@ class MobileScanController extends Controller
             'category' => ['nullable', 'string', 'max:100'],
             'source' => ['nullable', 'string', 'max:50'],
             'cover_url' => ['nullable', 'string', 'max:1000'],
+            'action_type' => ['nullable', 'string', 'in:add_copy,save_new'],
         ]);
 
         try {
+            $isbn = $validated['isbn'] ?? null;
+            $actionType = $validated['action_type'] ?? null;
+
+            if ($actionType === 'save_new') {
+                $isbn = null;
+            } elseif ($actionType === 'add_copy' && !empty($isbn)) {
+                $cleanIsbn = preg_replace('/[^0-9Xx]/', '', $isbn);
+                $count = \App\Models\Book::where('isbn', 'like', $cleanIsbn . '%')->count();
+                $isbn = $cleanIsbn . '-C' . ($count + 1);
+            }
+
             $inboxId = $validated['inbox_id'] ?? null;
             if ($inboxId) {
                 $inbox = BookInbox::findOrFail($inboxId);
+                if ($inbox->scanned_by !== auth()->id()) {
+                    return response()->json([
+                        'saved' => false,
+                        'error' => 'Unauthorized. Data inbox ini bukan milik Anda.',
+                    ], 403);
+                }
                 $inbox->update([
                     'title' => $validated['title'],
                     'author' => $validated['author'],
-                    'isbn' => $validated['isbn'],
+                    'isbn' => $isbn,
                     'publisher' => $validated['publisher'],
                     'published_year' => $validated['published_year'],
                     'description' => $validated['description'],
                     'category' => $validated['category'],
                     'source' => $validated['source'] ?? $inbox->source ?? 'manual',
                     'source_url' => $validated['cover_url'] ?? $inbox->source_url,
-                    'status' => 'pending',
+                    'status' => 'approved',
                 ]);
             } else {
+                $sessionId = $this->currentSessionId();
+                if (!$sessionId) {
+                    return response()->json([
+                        'saved' => false,
+                        'error' => 'Belum ada sesi scan aktif hari ini.',
+                    ], 400);
+                }
                 $inbox = BookInbox::query()->create([
-                    'scan_session_id' => $this->currentSessionId(),
+                    'scan_session_id' => $sessionId,
                     'scanned_by' => auth()->id(),
                     'title' => $validated['title'],
                     'author' => $validated['author'],
-                    'isbn' => $validated['isbn'],
+                    'isbn' => $isbn,
                     'publisher' => $validated['publisher'],
                     'published_year' => $validated['published_year'],
                     'description' => $validated['description'],
@@ -560,7 +690,7 @@ class MobileScanController extends Controller
                     'source' => $validated['source'] ?? 'manual',
                     'source_url' => $validated['cover_url'] ?? null,
                     'confidence' => 1.0,
-                    'status' => 'pending',
+                    'status' => 'approved',
                 ]);
 
                 $this->incrementSessionCount();
@@ -580,6 +710,29 @@ class MobileScanController extends Controller
             return response()->json([
                 'saved' => false,
                 'error' => 'Gagal menyimpan: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function deleteInbox(BookInbox $inbox): JsonResponse
+    {
+        if ($inbox->scanned_by !== auth()->id()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Unauthorized. Data inbox ini bukan milik Anda.',
+            ], 403);
+        }
+
+        try {
+            $inbox->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Inbox item deleted.',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Gagal menghapus: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -766,9 +919,11 @@ class MobileScanController extends Controller
         $key = config('services.google_books.api_key');
 
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(10)
-                ->withoutVerifying()
-                ->get($key ? "{$url}&key={$key}" : $url)
+            $http = \Illuminate\Support\Facades\Http::timeout(10);
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get($key ? "{$url}&key={$key}" : $url)
                 ->throw();
 
             $items = $response->json('items', []);
@@ -813,10 +968,11 @@ class MobileScanController extends Controller
         $query['limit'] = 1;
 
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(10)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->get("https://openlibrary.org/search.json", $query)
+            $http = \Illuminate\Support\Facades\Http::timeout(10)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get("https://openlibrary.org/search.json", $query)
                 ->throw();
 
             $doc = $response->json('docs.0');

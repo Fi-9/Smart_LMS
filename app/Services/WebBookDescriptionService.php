@@ -41,7 +41,7 @@ class WebBookDescriptionService
 
         $maxResults = max(1, min(5, $this->settingsService->getInt('ai.websearch.max_results', (int) config('services.websearch.max_results', 3))));
         // Paksa keyword untuk mencari buku agar tidak tercampur lagu/puisi
-        $query = 'Buku ' . $cleanTitle . ($cleanAuthor ? ' ' . $cleanAuthor : '') . ' Gramedia';
+        $query = 'Buku ' . $cleanTitle . ($cleanAuthor ? ' ' . $cleanAuthor : '');
         if (is_array($domains) && $domains !== []) {
             $siteParts = array_map(fn (string $d): string => 'site:' . trim($d), $domains);
             $query .= ' ' . implode(' OR ', $siteParts);
@@ -78,7 +78,7 @@ class WebBookDescriptionService
         }
 
         $maxResults = max(1, min(5, $this->settingsService->getInt('ai.websearch.max_results', (int) config('services.websearch.max_results', 3))));
-        $query = 'Buku ISBN ' . $cleanIsbn . ' Gramedia';
+        $query = 'Buku ISBN ' . $cleanIsbn;
         
         return $this->executeWebSearchAndExtract(
             $query,

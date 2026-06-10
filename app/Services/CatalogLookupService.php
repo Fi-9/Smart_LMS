@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\CategoryMapper;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,7 +12,8 @@ class CatalogLookupService
 {
     public function __construct(
         private readonly AppSettingsService $settingsService,
-        private readonly IsbnLookupService $isbnLookupService
+        private readonly IsbnLookupService $isbnLookupService,
+        private readonly WebBookDescriptionService $webDescriptionService
     ) {}
 
     /**
@@ -66,7 +68,7 @@ class CatalogLookupService
             $googleQuery['q'] = implode('+', $parts);
         }
 
-        if (is_string($apiKey) && $apiKey !== '') {
+        if (is_string($apiKey) && $apiKey !== '' && $apiKey !== 'google-secret') {
             $googleQuery['key'] = $apiKey;
         }
 
@@ -91,15 +93,23 @@ class CatalogLookupService
         ]);
 
         try {
-            // Run parallel requests
+            // Run parallel requests (numeric array — Http::pool strips associative keys)
             $responses = Http::pool(function (Pool $pool) use ($googleUrl, $googleQuery, $olUrl, $olQuery, $isbn) {
                 $reqs = [];
-                $reqs['google'] = $pool->timeout(10)->withoutVerifying()->acceptJson()->get($googleUrl, $googleQuery);
+                $gReq = $pool->timeout(10)->acceptJson();
+                $olReq = $pool->timeout(10)->acceptJson();
+
+                if (!config('services.ai_scan.tls_verify', true)) {
+                    $gReq = $gReq->withoutVerifying();
+                    $olReq = $olReq->withoutVerifying();
+                }
+
+                $reqs[] = $gReq->get($googleUrl, $googleQuery);  // index 0 = Google
                 
                 if ($isbn) {
-                    $reqs['openlibrary'] = $pool->timeout(10)->withoutVerifying()->acceptJson()->get($olUrl);
+                    $reqs[] = $olReq->get($olUrl);                // index 1 = OpenLibrary
                 } else {
-                    $reqs['openlibrary'] = $pool->timeout(10)->withoutVerifying()->acceptJson()->get($olUrl, $olQuery);
+                    $reqs[] = $olReq->get($olUrl, $olQuery);
                 }
                 
                 return $reqs;
@@ -112,7 +122,7 @@ class CatalogLookupService
         // Process Google Books response
         $googleData = null;
         try {
-            $gRes = $responses['google'] ?? null;
+            $gRes = $responses[0] ?? null;  // index 0 = Google Books
             if ($gRes && $gRes->ok()) {
                 $items = $gRes->json('items');
                 if (is_array($items) && !empty($items)) {
@@ -121,12 +131,16 @@ class CatalogLookupService
                         $googleData = [
                             'title' => $this->clean($volumeInfo['title'] ?? null),
                             'author' => $this->clean($volumeInfo['authors'][0] ?? null),
-                            'category' => $this->clean($volumeInfo['categories'][0] ?? null),
+                            'category' => CategoryMapper::toIndonesian(
+                            $this->clean($volumeInfo['categories'][0] ?? null)
+                        ),
                             'description' => $this->clean($volumeInfo['description'] ?? null),
                             'publisher' => $this->clean($volumeInfo['publisher'] ?? null),
                             'published_year' => $this->normalizeYear($volumeInfo['publishedDate'] ?? null),
                             'isbn' => $this->extractGoogleIsbn($volumeInfo) ?: $isbn,
-                            'cover_url' => $this->clean($volumeInfo['imageLinks']['thumbnail'] ?? null),
+                            'cover_url' => $this->upgradeGoogleCoverUrl(
+                            $this->clean($volumeInfo['imageLinks']['thumbnail'] ?? null)
+                        ),
                             'source' => 'google',
                             'source_url' => $this->clean($volumeInfo['infoLink'] ?? null) ?? 'https://books.google.com/',
                         ];
@@ -144,12 +158,14 @@ class CatalogLookupService
         // Process OpenLibrary response
         $olData = null;
         try {
-            $olRes = $responses['openlibrary'] ?? null;
+            $olRes = $responses[1] ?? null;  // index 1 = OpenLibrary
             if ($olRes && $olRes->ok()) {
                 $book = $olRes->json();
                 if (is_array($book)) {
                     if ($isbn) {
-                        $olData = $this->mapOpenLibraryEdition($book, $isbn);
+                        $olEdition = $this->mapOpenLibraryEdition($book, $isbn);
+                        $olEdition['category'] = CategoryMapper::toIndonesian($olEdition['category'] ?? null);
+                        $olData = $olEdition;
                     } else {
                         // It was a search response
                         $doc = $book['docs'][0] ?? null;
@@ -160,7 +176,9 @@ class CatalogLookupService
                             $olData = [
                                 'title' => $this->clean($doc['title'] ?? null),
                                 'author' => $this->clean($doc['author_name'][0] ?? null),
-                                'category' => $this->extractOpenLibrarySearchCategory($doc),
+                                'category' => CategoryMapper::toIndonesian(
+                                    $this->extractOpenLibrarySearchCategory($doc)
+                                ),
                                 'description' => null,
                                 'publisher' => $this->clean($doc['publisher'][0] ?? null),
                                 'published_year' => $this->normalizeYear($doc['first_publish_year'] ?? null),
@@ -179,6 +197,56 @@ class CatalogLookupService
             }
         } catch (Throwable $e) {
             Log::channel('ai_scan')->warning("Failed to parse OpenLibrary response: " . $e->getMessage());
+        }
+
+        // B2: Sync Tavily description recovery — only if BOTH Google and OL lack description
+        if (empty($googleData['description']) && empty($olData['description'])) {
+            try {
+                $resolvedTitle = $googleData['title'] ?? $olData['title'] ?? $title;
+                $resolvedAuthor = $googleData['author'] ?? $olData['author'] ?? $author;
+
+                $webData = null;
+                if (!empty($resolvedTitle)) {
+                    Log::channel('ai_scan')->info('Sync Tavily fallback: title+author search', ['title' => $resolvedTitle, 'author' => $resolvedAuthor]);
+                    $webData = $this->webDescriptionService->resolve($resolvedTitle, $resolvedAuthor);
+                }
+                if ((empty($webData) || empty($webData['description'])) && $isbn) {
+                    Log::channel('ai_scan')->info('Sync Tavily fallback: isbn search fallback', ['isbn' => $isbn]);
+                    $webData = $this->webDescriptionService->resolveByIsbn($isbn);
+                }
+
+                if ($webData && !empty($webData['description'])) {
+                    // Inject description into the best available source
+                    if (is_array($googleData)) {
+                        $googleData['description'] = $webData['description'];
+                        $googleData['description_source'] = 'tavily';
+                    } elseif (is_array($olData)) {
+                        $olData['description'] = $webData['description'];
+                        $olData['description_source'] = 'tavily';
+                    } else {
+                        // No data from either API — use web data as google-equivalent
+                        $googleData = [
+                            'title' => $webData['title'] ?? null,
+                            'author' => $webData['author'] ?? null,
+                            'category' => CategoryMapper::toIndonesian($webData['category'] ?? null),
+                            'description' => $webData['description'],
+                            'description_source' => 'tavily',
+                            'publisher' => $webData['publisher'] ?? null,
+                            'published_year' => null,
+                            'isbn' => $webData['isbn'] ?? $isbn,
+                            'cover_url' => null,
+                            'source' => 'websearch',
+                            'source_url' => $webData['source_url'] ?? null,
+                        ];
+                    }
+                    Log::channel('ai_scan')->info('Sync Tavily fallback: description recovered', [
+                        'isbn' => $isbn,
+                        'title' => $resolvedTitle
+                    ]);
+                }
+            } catch (Throwable $e) {
+                Log::channel('ai_scan')->warning('Sync Tavily fallback failed: ' . $e->getMessage());
+            }
         }
 
         return [
@@ -292,6 +360,11 @@ class CatalogLookupService
             $coverUrl = 'https://covers.openlibrary.org/b/id/' . $book['covers'][0] . '-M.jpg';
         }
 
+        $work = null;
+        if (isset($book['works'][0]['key']) && is_string($book['works'][0]['key'])) {
+            $work = $this->fetchOpenLibraryWorkDetails($book['works'][0]['key']);
+        }
+
         $description = null;
         if (isset($book['description'])) {
             if (is_string($book['description'])) {
@@ -299,6 +372,18 @@ class CatalogLookupService
             } elseif (is_array($book['description'])) {
                 $description = $this->clean($book['description']['value'] ?? null);
             }
+        }
+        if (!$description && $work && isset($work['description'])) {
+            if (is_string($work['description'])) {
+                $description = $this->clean($work['description']);
+            } elseif (is_array($work['description'])) {
+                $description = $this->clean($work['description']['value'] ?? null);
+            }
+        }
+
+        $category = $this->extractOpenLibraryEditionCategory($book);
+        if (!$category && $work) {
+            $category = $this->extractOpenLibraryEditionCategory($work);
         }
 
         $isbn = $fallbackIsbn;
@@ -309,7 +394,7 @@ class CatalogLookupService
         return [
             'title' => $this->clean($book['title'] ?? null),
             'author' => $authorName,
-            'category' => $this->extractOpenLibraryEditionCategory($book),
+            'category' => $category,
             'description' => $description,
             'publisher' => $this->clean($book['publishers'][0] ?? null),
             'published_year' => $this->normalizeYear($book['publish_date'] ?? null),
@@ -323,13 +408,29 @@ class CatalogLookupService
     private function fetchOpenLibraryAuthorName(string $authorKey): ?string
     {
         try {
-            $authorResponse = Http::timeout(8)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->get('https://openlibrary.org' . $authorKey . '.json');
+            $http = Http::timeout(8)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $authorResponse = $http->get('https://openlibrary.org' . $authorKey . '.json');
             if ($authorResponse->ok()) {
                 $authorPayload = $authorResponse->json();
                 return is_array($authorPayload) ? $this->clean($authorPayload['name'] ?? null) : null;
+            }
+        } catch (\Throwable $e) {}
+        return null;
+    }
+
+    private function fetchOpenLibraryWorkDetails(string $workKey): ?array
+    {
+        try {
+            $http = Http::timeout(8)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get('https://openlibrary.org' . $workKey . '.json');
+            if ($response->ok()) {
+                return $response->json();
             }
         } catch (\Throwable $e) {}
         return null;
@@ -386,5 +487,17 @@ class CatalogLookupService
         $value = preg_replace('/[^a-z0-9\s]/', ' ', $value) ?? $value;
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
         return trim($value);
+    }
+
+    /**
+     * Upgrade Google Books thumbnail URL to higher resolution.
+     * Replaces zoom=N with zoom=0 for max resolution, removes curl edge effect, forces HTTPS.
+     */
+    private function upgradeGoogleCoverUrl(?string $url): ?string
+    {
+        if (!$url) return null;
+        $url = preg_replace('/zoom=\d+/', 'zoom=0', $url) ?? $url;
+        $url = str_replace('&edge=curl', '', $url);
+        return str_replace('http://', 'https://', $url);
     }
 }

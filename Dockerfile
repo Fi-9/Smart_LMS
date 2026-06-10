@@ -9,6 +9,8 @@ RUN composer install \
     --prefer-dist \
     --no-interaction \
     --no-progress \
+    --ignore-platform-reqs \
+    --no-scripts \
     --optimize-autoloader
 
 FROM node:22-alpine AS assets
@@ -45,6 +47,7 @@ RUN apt-get update \
         libxml2-dev \
         libzip-dev \
         libavif-dev \
+        libpq-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-avif \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
@@ -55,6 +58,8 @@ RUN apt-get update \
         opcache \
         pcntl \
         pdo_mysql \
+        pdo_pgsql \
+        pgsql \
         zip \
     && a2enmod rewrite \
     && sed -ri -e 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/*.conf \

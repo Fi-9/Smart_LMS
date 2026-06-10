@@ -17,3 +17,17 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
+
+/database/database.sqlite
+/storage/logs/*.log
+/storage/framework/cache/data/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+/storage/app/private/
+/storage/app/public/book-scans/
+/storage/app/public/logos/
+/storage/app/public/qrcodes/
+/storage/app/public/book-covers/
+/scratch
+/.autoclaw-attachments

@@ -10,7 +10,7 @@ class QrCodeService
 {
     public function generateBookQrPath(int $bookId): string
     {
-        $targetUrl = route('books.web.show', $bookId);
+        $targetUrl = route('books.public.show', $bookId);
         $qrPayload = $this->buildQrPayload($targetUrl);
         $relativePath = "qrcodes/book-{$bookId}.{$qrPayload['extension']}";
         $publicPath = "storage/{$relativePath}";
@@ -25,7 +25,7 @@ class QrCodeService
 
     public function generateBase64(int $bookId): string
     {
-        $targetUrl = route('books.web.show', $bookId);
+        $targetUrl = route('books.public.show', $bookId);
         $qrPayload = $this->buildQrPayload($targetUrl);
 
         return 'data:' . $qrPayload['mime'] . ';base64,' . base64_encode($qrPayload['raw']);

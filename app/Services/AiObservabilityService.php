@@ -102,7 +102,7 @@ class AiObservabilityService
         // Fetch completed books from book_inbox for hit rates and confidence
         $inboxes = BookInbox::query()
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->get(['source', 'confidence_score', 'created_at']);
+            ->get(['source', 'confidence_score', 'created_at', 'metadata_completeness', 'metadata_missing']);
 
         $totalInbox = $inboxes->count();
         
@@ -129,6 +129,53 @@ class AiObservabilityService
         $avgConfidence = $totalInbox > 0
             ? round($inboxes->avg('confidence_score'), 1)
             : 0.0;
+
+        $avgCompleteness = $totalInbox > 0
+            ? round($inboxes->avg('metadata_completeness'), 1)
+            : 0.0;
+
+        $lowestCompleteness = $totalInbox > 0
+            ? (int) $inboxes->min('metadata_completeness')
+            : 0;
+
+        $missingCounts = [
+            'title' => 0,
+            'author' => 0,
+            'isbn' => 0,
+            'cover' => 0,
+            'description' => 0,
+            'category' => 0,
+            'publisher' => 0,
+            'published_year' => 0,
+        ];
+
+        foreach ($inboxes as $inbox) {
+            $missingData = $inbox->metadata_missing;
+            if (is_array($missingData)) {
+                if (isset($missingData['missing']) && is_array($missingData['missing'])) {
+                    foreach ($missingData['missing'] as $field) {
+                        if (array_key_exists($field, $missingCounts)) {
+                            $missingCounts[$field]++;
+                        }
+                    }
+                } else {
+                    foreach ($missingData as $field) {
+                        if (is_string($field) && array_key_exists($field, $missingCounts)) {
+                            $missingCounts[$field]++;
+                        }
+                    }
+                }
+            }
+        }
+
+        $mostMissing = [];
+        foreach ($missingCounts as $field => $count) {
+            $mostMissing[$field] = [
+                'count' => $count,
+                'percentage' => $totalInbox > 0 ? round(($count / $totalInbox) * 100, 1) : 0.0,
+            ];
+        }
+        uasort($mostMissing, fn($a, $b) => $b['count'] <=> $a['count']);
 
         // Fetch recent failures
         $recentFailures = ScanJob::query()
@@ -166,6 +213,9 @@ class AiObservabilityService
             'api_failures' => $apiFailures,
             'cache_hit_rate' => $cacheHitRate,
             'avg_confidence' => $avgConfidence,
+            'avg_completeness' => $avgCompleteness,
+            'lowest_completeness' => $lowestCompleteness,
+            'most_missing' => $mostMissing,
             'source_distribution' => $sourceCounts,
             'recent_failures' => $recentFailures,
             'trends' => $trends,

@@ -28,6 +28,8 @@ class ScanJob extends Model
 
     protected $fillable = [
         'scan_session_id',
+        'isbn',
+        'scan_source',
         'front_cover_path',
         'back_cover_path',
         'front_cover_hash',
@@ -59,5 +61,10 @@ class ScanJob extends Model
     public function scanSession(): BelongsTo
     {
         return $this->belongsTo(ScanSession::class, 'scan_session_id');
+    }
+
+    public function isIsbnFlow(): bool
+    {
+        return $this->scan_source !== 'camera';
     }
 }

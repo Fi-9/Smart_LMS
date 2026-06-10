@@ -54,7 +54,7 @@
                     </div>
                     <div>
                         <label class="form-label">n8n API Key (JWT Token)</label>
-                        <input type="password" name="n8n_api_key" value="{{ old('n8n_api_key', $settings['n8n_api_key']) }}" class="form-input" placeholder="{{ $masked_settings['n8n_api_key'] ?? 'eyJh...' }}">
+                        <input type="password" name="n8n_api_key" value="{{ old('n8n_api_key', $settings['n8n_api_key'] ? '********' : '') }}" class="form-input" placeholder="{{ $masked_settings['n8n_api_key'] ?? 'eyJh...' }}">
                         <p class="mt-1 text-xs text-gray-400">Dari n8n Settings → Public API → Generate API Key.</p>
                     </div>
                     <div class="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
@@ -80,7 +80,7 @@
 
                     <div>
                         <label class="form-label">Tavily API Key</label>
-                        <input type="password" name="tavily_api_key" value="{{ old('tavily_api_key', $settings['tavily_api_key']) }}" class="form-input" placeholder="{{ $masked_settings['tavily_api_key'] ?? 'tvly-...' }}">
+                        <input type="password" name="tavily_api_key" value="{{ old('tavily_api_key', $settings['tavily_api_key'] ? '********' : '') }}" class="form-input" placeholder="{{ $masked_settings['tavily_api_key'] ?? 'tvly-...' }}">
                     </div>
                     <div>
                         <label class="form-label">Tavily Base URL</label>
@@ -102,7 +102,7 @@
                     </div>
                     <div>
                         <label class="form-label">Google Books API Key</label>
-                        <input type="password" name="google_books_api_key" value="{{ old('google_books_api_key', $settings['google_books_api_key']) }}" class="form-input" placeholder="{{ $masked_settings['google_books_api_key'] ?? 'optional' }}">
+                        <input type="password" name="google_books_api_key" value="{{ old('google_books_api_key', $settings['google_books_api_key'] ? '********' : '') }}" class="form-input" placeholder="{{ $masked_settings['google_books_api_key'] ?? 'optional' }}">
                     </div>
                     <div>
                         <label class="form-label">Default Scan Mode</label>

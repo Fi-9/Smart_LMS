@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\RedirectResponse;
+use App\Models\Book;
+use Illuminate\Contracts\View\View;
 
 class BookPublicController extends Controller
 {
-    public function show(int $bookId): RedirectResponse
+    public function show(int $bookId): View
     {
-        // Backward compatibility: old QR payloads still target /book/{id}.
-        // Redirect them to the richer admin detail page.
-        return redirect()->route('books.web.show', $bookId);
+        $book = Book::with(['rack', 'category'])->findOrFail($bookId);
+
+        return view('books.public_show', compact('book'));
     }
 }

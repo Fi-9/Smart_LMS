@@ -2,11 +2,82 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Throwable;
 
 class CoverImageService
 {
+    /**
+     * Download a cover image from an external URL to local storage.
+     * No GD required — saves raw bytes directly.
+     *
+     * @param string $url The external cover URL (Google Books / OpenLibrary)
+     * @param int $scanJobId Used to generate a unique filename
+     * @return string|null Local web path (e.g. /storage/book-covers/isbn-123-1749219200.jpg) or null on failure
+     */
+    public function downloadFromUrl(string $url, int $scanJobId): ?string
+    {
+        if (trim($url) === '' || !str_starts_with(trim($url), 'http')) {
+            return null;
+        }
+
+        try {
+            $http = Http::timeout(10);
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get($url);
+
+            if (!$response->ok()) {
+                Log::channel('ai_scan')->warning('Cover download: HTTP failed', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                ]);
+                return null;
+            }
+
+            $body = $response->body();
+            if (strlen($body) < 100) {
+                // Too small to be a real image
+                Log::channel('ai_scan')->warning('Cover download: response body too small', [
+                    'url' => $url,
+                    'size' => strlen($body),
+                ]);
+                return null;
+            }
+
+            // Detect extension from Content-Type header
+            $contentType = $response->header('Content-Type') ?? '';
+            $ext = match (true) {
+                str_contains($contentType, 'png') => 'png',
+                str_contains($contentType, 'webp') => 'webp',
+                str_contains($contentType, 'gif') => 'gif',
+                default => 'jpg',
+            };
+
+            $timestamp = now()->timestamp;
+            $relativePath = "book-covers/isbn-{$scanJobId}-{$timestamp}.{$ext}";
+
+            Storage::disk('public')->put($relativePath, $body);
+
+            Log::channel('ai_scan')->info('Cover downloaded to local storage', [
+                'url' => $url,
+                'path' => $relativePath,
+                'size' => strlen($body),
+            ]);
+
+            return '/storage/' . $relativePath;
+        } catch (Throwable $e) {
+            Log::channel('ai_scan')->warning('Cover download failed: ' . $e->getMessage(), [
+                'url' => $url,
+            ]);
+            return null;
+        }
+    }
+
     /**
      * Crop front cover image using AI-provided normalized cover box.
      * If box is missing/invalid, fallback to center crop with 2:3 ratio.
@@ -36,6 +107,13 @@ class CoverImageService
         $sourceAbsPath = storage_path('app/public/' . $relative);
         if (! is_file($sourceAbsPath)) {
             return null;
+        }
+
+        if (!extension_loaded('gd') || !function_exists('imagecreatefromstring')) {
+            \Illuminate\Support\Facades\Log::warning('GD extension not loaded. Skipping cover image processing and returning original path.', [
+                'path' => $webPath
+            ]);
+            return $webPath;
         }
 
         $raw = @file_get_contents($sourceAbsPath);

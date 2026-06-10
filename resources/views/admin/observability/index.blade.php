@@ -28,7 +28,7 @@
     </div>
 
     {{-- Top Stats Grid --}}
-    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {{-- Success Rate Card --}}
         <x-card class="relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
             <div class="flex items-center justify-between">
@@ -74,6 +74,36 @@
             <div class="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-violet-500 to-purple-400"></div>
         </x-card>
 
+        {{-- Avg Completeness Card --}}
+        <x-card class="relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+            <div class="flex items-center justify-between">
+                <p class="text-xs font-semibold uppercase tracking-wider text-muted">Avg Completeness</p>
+                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                </span>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-3xl font-bold tracking-tight text-foreground" id="metric-avg-completeness">{{ $stats['avg_completeness'] }}%</h3>
+                <p class="mt-1 text-xs text-muted">Kelengkapan metadata</p>
+            </div>
+            <div class="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 to-blue-400"></div>
+        </x-card>
+
+        {{-- Lowest Completeness Card --}}
+        <x-card class="relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+            <div class="flex items-center justify-between">
+                <p class="text-xs font-semibold uppercase tracking-wider text-muted">Lowest Completeness</p>
+                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                </span>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-3xl font-bold tracking-tight text-foreground" id="metric-lowest-completeness">{{ $stats['lowest_completeness'] }}%</h3>
+                <p class="mt-1 text-xs text-muted">Kelengkapan terendah</p>
+            </div>
+            <div class="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500 to-red-400"></div>
+        </x-card>
+
         {{-- Avg Confidence Card --}}
         <x-card class="relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
             <div class="flex items-center justify-between">
@@ -87,24 +117,6 @@
                 <p class="mt-1 text-xs text-muted font-medium text-emerald-600 dark:text-emerald-400">Target auto-approve: 95%</p>
             </div>
             <div class="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 to-orange-400"></div>
-        </x-card>
-
-        {{-- Queue Status Card --}}
-        <x-card class="relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
-            <div class="flex items-center justify-between">
-                <p class="text-xs font-semibold uppercase tracking-wider text-muted">Scan Queue</p>
-                <span class="relative flex h-3 w-3">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </span>
-            </div>
-            <div class="mt-4">
-                <h3 class="text-xl font-bold tracking-tight text-foreground" id="metric-queue-status">
-                    {{ $stats['queue']['processing'] }} Proses / {{ $stats['queue']['waiting'] }} Antre
-                </h3>
-                <p class="mt-1 text-xs text-muted">Status Background Worker</p>
-            </div>
-            <div class="absolute bottom-0 inset-x-0 h-1 bg-gradient-to-r from-teal-500 to-emerald-400"></div>
         </x-card>
     </div>
 
@@ -134,7 +146,7 @@
     </div>
 
     {{-- Stage Failure & Provider hit rates Section --}}
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-6">
         {{-- Stage Failure Distribution --}}
         <x-card>
             <div class="flex items-center justify-between border-b border-border pb-3 mb-4">
@@ -236,6 +248,29 @@
                     Provider Health
                     <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                 </a>
+            </div>
+        </x-card>
+
+        {{-- Most Missing Metadata Card --}}
+        <x-card>
+            <div class="flex items-center justify-between border-b border-border pb-3 mb-4">
+                <h2 class="text-sm font-bold tracking-tight text-foreground uppercase">Most Missing Metadata</h2>
+                <span class="text-xs text-muted">Persentase field kosong</span>
+            </div>
+            <div class="space-y-3" id="most-missing-container">
+                @forelse($stats['most_missing'] as $field => $data)
+                    <div>
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="font-medium text-foreground capitalize">{{ $field }}</span>
+                            <span class="font-bold text-muted" id="missing-pct-val-{{ $field }}">{{ $data['count'] }} buku ({{ $data['percentage'] }}%)</span>
+                        </div>
+                        <div class="h-2 w-full rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
+                            <div class="h-full rounded-full bg-amber-500" id="missing-bar-{{ $field }}" style="width: {{ $data['percentage'] }}%"></div>
+                        </div>
+                    </div>
+                @empty
+                    <p class="text-xs text-muted py-4 text-center">Tidak ada data scan tersimpan.</p>
+                @endforelse
             </div>
         </x-card>
     </div>
@@ -473,9 +508,34 @@
                             document.getElementById('metric-total-scans').textContent = data.total_scans;
                             document.getElementById('metric-latency').textContent = `${((data.avg_latency.total || 0) / 1000).toFixed(2)}s`;
                             document.getElementById('metric-cache-hit-rate').textContent = `${data.cache_hit_rate}%`;
+                            document.getElementById('metric-avg-completeness').textContent = `${data.avg_completeness}%`;
+                            document.getElementById('metric-lowest-completeness').textContent = `${data.lowest_completeness}%`;
                             document.getElementById('metric-confidence').textContent = `${data.avg_confidence}%`;
                             document.getElementById('metric-queue-status').textContent = 
                                 `${data.queue.processing} Proses / ${data.queue.waiting} Antre`;
+
+                            // Update Most Missing Metadata progress bars and labels
+                            const container = document.getElementById('most-missing-container');
+                            if (container && data.most_missing) {
+                                let html = '';
+                                for (let field in data.most_missing) {
+                                    const item = data.most_missing[field];
+                                    html += `
+                                        <div>
+                                            <div class="flex items-center justify-between text-xs mb-1">
+                                                <span class="font-medium text-foreground capitalize">${field}</span>
+                                                <span class="font-bold text-muted" id="missing-pct-val-${field}">${item.count} buku (${item.percentage}%)</span>
+                                            </div>
+                                            <div class="h-2 w-full rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
+                                                <div class="h-full rounded-full bg-amber-500" id="missing-bar-${field}" style="width: ${item.percentage}%"></div>
+                                            </div>
+                                        </div>`;
+                                }
+                                if (Object.keys(data.most_missing).length === 0) {
+                                    html = '<p class="text-xs text-muted py-4 text-center">Tidak ada data scan tersimpan.</p>';
+                                }
+                                container.innerHTML = html;
+                            }
 
                             // Update Pipeline Latency Chart
                             latencyChart.data.datasets[0].data = [

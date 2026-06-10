@@ -124,8 +124,11 @@ class AiInfrastructureService
         try {
             $http = Http::connectTimeout(5)
                 ->timeout(10)
-                ->acceptJson()
-                ->withoutVerifying();
+                ->acceptJson();
+
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
 
             if ($apiKey) {
                 $http = $http->withHeader('X-N8N-API-KEY', $apiKey);

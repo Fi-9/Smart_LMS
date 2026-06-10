@@ -13,13 +13,16 @@ class WebContentExtractorService
         $timeout = max(3, (int) config('services.websearch.timeout', 12));
 
         try {
-            $response = Http::timeout($timeout)
-                ->withoutVerifying()
-                ->withHeaders([
-                    'User-Agent' => 'SmartLibraryBot/1.0 (+https://localhost)',
-                    'Accept-Language' => 'id,en;q=0.8',
-                ])
-                ->get($url);
+            $http = Http::timeout($timeout)->withHeaders([
+                'User-Agent' => 'SmartLibraryBot/1.0 (+https://localhost)',
+                'Accept-Language' => 'id,en;q=0.8',
+            ]);
+
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->get($url);
         } catch (ConnectionException $e) {
             Log::warning('websearch.extract.connection_failed', ['url' => $url, 'error' => $e->getMessage()]);
 

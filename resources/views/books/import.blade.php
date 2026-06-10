@@ -254,7 +254,41 @@
 
                             <div class="space-y-5" data-review-list>
                                 @foreach($books as $book)
-                                    <div class="rounded-[1.25rem] border {{ ($book['scan_status'] ?? 'success') === 'failed' ? 'border-amber-200 bg-amber-50/60' : 'border-gray-200 bg-gray-50/60' }} p-5" data-review-book-item>
+                                    @php
+                                        $itemTitle = $book['title'] ?? '';
+                                        $itemAuthor = $book['author'] ?? '';
+                                        $itemIsbn = $book['isbn'] ?? '';
+                                        $itemCover = $book['cover_url'] ?? '';
+                                        $itemDescription = $book['description'] ?? '';
+                                        $itemCategory = $book['category_name'] ?? $categoryName ?? '';
+                                        $itemPublisher = $book['publisher'] ?? '';
+                                        $itemPublishedYear = $book['published_year'] ?? '';
+
+                                        $fields = [
+                                            'title' => $itemTitle,
+                                            'author' => $itemAuthor,
+                                            'isbn' => $itemIsbn,
+                                            'cover' => $itemCover,
+                                            'description' => $itemDescription,
+                                            'category' => $itemCategory,
+                                            'publisher' => $itemPublisher,
+                                            'published_year' => $itemPublishedYear,
+                                        ];
+
+                                        $missing = [];
+                                        $present = [];
+                                        $filled = 0;
+                                        foreach ($fields as $name => $value) {
+                                            if ($value !== null && $value !== '' && $value !== 'Unknown') {
+                                                $filled++;
+                                                $present[] = $name;
+                                            } else {
+                                                $missing[] = $name;
+                                            }
+                                        }
+                                        $completenessScore = (int) round(($filled / count($fields)) * 100);
+                                    @endphp
+                                    <div class="rounded-[1.25rem] border {{ ($book['scan_status'] ?? 'success') === 'failed' ? 'border-amber-200 bg-amber-50/60' : 'border-gray-200 bg-gray-50/60' }} p-5" data-review-book-item data-publisher="{{ $book['publisher'] ?? '' }}" data-published-year="{{ $book['published_year'] ?? '' }}">
                                         <input type="hidden" name="books[{{ $flatIndex }}][scan_id]" value="{{ $book['scan_id'] }}" data-review-field="scan_id">
 
                                         <div class="mb-4 flex items-start justify-between gap-3">
@@ -269,6 +303,12 @@
                                                 @if(!empty($book['error']))
                                                     <span class="text-sm text-amber-700">{{ $book['error'] }}</span>
                                                 @endif
+                                                <span class="completeness-badge rounded-full bg-indigo-100 text-indigo-700 px-3 py-1 text-xs font-semibold">
+                                                    Completeness: <span class="score-value">{{ $completenessScore }}</span>%
+                                                </span>
+                                                <span class="missing-fields-label text-xs text-gray-500">
+                                                    Missing: <span class="missing-fields-value">{{ implode(', ', $missing) ?: 'None' }}</span>
+                                                </span>
                                             </div>
                                             <div class="flex flex-wrap gap-2">
                                                 <button type="button" class="enrich-review-book inline-flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-primary-700 transition hover:bg-primary-100" title="Cari otomatis metadata yang kosong berdasarkan Judul & Penulis">
@@ -1524,6 +1564,53 @@
                 }
             });
 
+            const recalculateCardCompleteness = (card) => {
+                const title = card.querySelector('[data-review-field="title"]')?.value || '';
+                const author = card.querySelector('[data-review-field="author"]')?.value || '';
+                const isbn = card.querySelector('[data-review-field="isbn"]')?.value || '';
+                const category = card.querySelector('[data-review-field="category_name"]')?.value || '';
+                const cover = card.querySelector('[data-review-field="cover_url"]')?.value || '';
+                const description = card.querySelector('[data-review-field="description"]')?.value || '';
+                
+                const publisher = card.dataset.publisher || '';
+                const publishedYear = card.dataset.publishedYear || '';
+
+                const fields = {
+                    title: title,
+                    author: author,
+                    isbn: isbn,
+                    cover: cover,
+                    description: description,
+                    category: category,
+                    publisher: publisher,
+                    published_year: publishedYear
+                };
+
+                let filled = 0;
+                let missing = [];
+                const allFieldNames = ['title', 'author', 'isbn', 'cover', 'description', 'category', 'publisher', 'published_year'];
+
+                allFieldNames.forEach(name => {
+                    const value = fields[name];
+                    if (value !== undefined && value !== null && value !== '' && value !== 'Unknown') {
+                        filled++;
+                    } else {
+                        missing.push(name);
+                    }
+                });
+
+                const score = Math.round((filled / allFieldNames.length) * 100);
+                
+                const scoreValueSpan = card.querySelector('.score-value');
+                if (scoreValueSpan) {
+                    scoreValueSpan.textContent = score;
+                }
+                const missingFieldsSpan = card.querySelector('.missing-fields-value');
+                if (missingFieldsSpan) {
+                    missingFieldsSpan.textContent = missing.length > 0 ? missing.join(', ') : 'None';
+                }
+            };
+
             const reviewSubmitButton = document.getElementById('review-submit-button');
             const reindexReviewCards = () => {
                 const reviewCards = [...document.querySelectorAll('[data-review-book-item]')];
@@ -1601,6 +1688,8 @@
                             if (descInput && data.description && !descInput.value) descInput.value = data.description;
                             if (coverUrlInput && data.cover_url && !coverUrlInput.value) coverUrlInput.value = data.cover_url;
 
+                            recalculateCardCompleteness(card);
+
                             enrichButton.classList.add('bg-green-50', 'text-green-700', 'border-green-200');
                             enrichButton.classList.remove('bg-primary-50', 'text-primary-700', 'border-primary-200');
                             if (span) span.textContent = 'Berhasil';
@@ -1623,6 +1712,29 @@
             });
 
             reindexReviewCards();
+
+            // Set up live recalculation of completeness
+            document.querySelectorAll('[data-review-list]').forEach((list) => {
+                list.addEventListener('input', (event) => {
+                    const target = event.target.closest('[data-review-field]');
+                    if (target) {
+                        const card = target.closest('[data-review-book-item]');
+                        if (card) recalculateCardCompleteness(card);
+                    }
+                });
+                list.addEventListener('change', (event) => {
+                    const target = event.target.closest('[data-review-field]');
+                    if (target) {
+                        const card = target.closest('[data-review-book-item]');
+                        if (card) recalculateCardCompleteness(card);
+                    }
+                });
+            });
+
+            // Initialize completeness for existing cards on page load
+            document.querySelectorAll('[data-review-book-item]').forEach((card) => {
+                recalculateCardCompleteness(card);
+            });
 
             const lookupButton = document.getElementById('isbn-lookup-btn');
             const statusNode = document.getElementById('isbn-lookup-status');

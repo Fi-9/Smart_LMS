@@ -45,10 +45,11 @@ class TavilySearchService
         }
 
         try {
-            $response = Http::timeout($timeout)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->withToken($apiKey)
+            $http = Http::timeout($timeout)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->withToken($apiKey)
                 ->post($baseUrl . '/search', $payload)
                 ->throw();
         } catch (ConnectionException|RequestException $e) {

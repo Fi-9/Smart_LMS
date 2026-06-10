@@ -64,6 +64,7 @@ return [
     'ai_scan' => [
         'cover_width' => (int) env('AI_COVER_WIDTH', 600),
         'cover_height' => (int) env('AI_COVER_HEIGHT', 900),
+        'tls_verify' => (bool) env('AI_TLS_VERIFY', true),
     ],
 
     'n8n' => [

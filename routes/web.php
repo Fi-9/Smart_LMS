@@ -36,6 +36,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/book-scanner/queue-status', [MobileScanController::class, 'queueStatus'])->name('book-scanner.queue-status');
     Route::post('/book-scanner/retry/{job}', [MobileScanController::class, 'retryJob'])->name('book-scanner.retry');
     Route::post('/book-scanner/save-inbox', [MobileScanController::class, 'saveToInbox'])->name('book-scanner.save-inbox');
+    Route::delete('/book-scanner/inbox/{inbox}', [MobileScanController::class, 'deleteInbox'])->name('book-scanner.inbox.destroy');
     Route::get('/book-scanner/stats', [MobileScanController::class, 'todayStats'])->name('book-scanner.stats');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });

@@ -20,22 +20,20 @@ class MetadataEnrichmentService
             'title' => $google['title'] ?? $ol['title'] ?? $vision['title'] ?? null,
             'author' => $google['author'] ?? $ol['author'] ?? $vision['author'] ?? null,
             'isbn' => $google['isbn'] ?? $ol['isbn'] ?? $vision['isbn'] ?? null,
-            'publisher' => $google['publisher'] ?? $ol['publisher'] ?? $vision['publisher_hint'] ?? $vision['publisher'] ?? null,
+            'publisher' => $google['publisher'] ?? $ol['publisher'] ?? null,
             'published_year' => $google['published_year'] ?? $ol['published_year'] ?? $vision['published_year'] ?? null,
-            'description' => $vision['description_back_cover'] ?? $vision['description'] ?? $google['description'] ?? $ol['description'] ?? null,
-            'category' => $google['category'] ?? $ol['category'] ?? $vision['category'] ?? null,
-            'cover_url' => $google['cover_url'] ?? $ol['cover_url'] ?? null,
+            'description' => $google['description'] ?? $ol['description'] ?? null,
+            'category' => $google['category'] ?? $ol['category'] ?? null,
+            'cover_url' => $ol['cover_url'] ?? $google['cover_url'] ?? null,
             'language' => $google['language'] ?? $ol['language'] ?? 'id',
             'source_url' => $google['source_url'] ?? $ol['source_url'] ?? null,
         ];
 
-        // Prefer longer descriptions between Google and OpenLibrary if vision description is not set
-        if (empty($vision['description_back_cover']) && empty($vision['description'])) {
-            $descGoogle = $google['description'] ?? '';
-            $descOL = $ol['description'] ?? '';
-            if (strlen((string) $descOL) > strlen((string) $descGoogle) && strlen((string) $descOL) > 100) {
-                $merged['description'] = $descOL;
-            }
+        // Prefer longer descriptions between Google and OpenLibrary
+        $descGoogle = $google['description'] ?? '';
+        $descOL = $ol['description'] ?? '';
+        if (strlen((string) $descOL) > strlen((string) $descGoogle) && strlen((string) $descOL) > 100) {
+            $merged['description'] = $descOL;
         }
 
         return $merged;
@@ -53,82 +51,67 @@ class MetadataEnrichmentService
      */
     public function calculateConfidence(array $vision, array $merged, string $source): int
     {
-        // If no external source was found, base confidence is 60
-        if ($source === 'gemini_vision') {
-            return 60;
-        }
-
-        $weights = [];
-        $scores = [];
-
-        // Title (35%)
-        $vTitle = $vision['title'] ?? '';
-        $mTitle = $merged['title'] ?? '';
-        if (!empty($vTitle)) {
-            $weights['title'] = 35;
-            $scores['title'] = $this->computeSimilarity($vTitle, $mTitle);
-        }
-
-        // Author (25%)
-        $vAuthor = $vision['author'] ?? '';
-        $mAuthor = $merged['author'] ?? '';
-        if (!empty($vAuthor)) {
-            $weights['author'] = 25;
-            $scores['author'] = $this->computeSimilarity($vAuthor, $mAuthor);
-        }
-
-        // ISBN (20%)
+        // Check if there is an exact/validated ISBN match
         $vIsbn = $vision['isbn'] ?? '';
         $mIsbn = $merged['isbn'] ?? '';
-        $isbnMatch = 0.0;
         $hasRealIsbnMatch = false;
         if (!empty($vIsbn) && !empty($mIsbn)) {
             $cleanV = preg_replace('/[^0-9Xx]/', '', $vIsbn);
             $cleanM = preg_replace('/[^0-9Xx]/', '', $mIsbn);
-            if ($cleanV !== '' && $cleanM !== '') {
-                if ($cleanV === $cleanM) {
-                    $isbnMatch = 1.0;
-                    $hasRealIsbnMatch = true;
-                }
+            if ($cleanV !== '' && $cleanM !== '' && $cleanV === $cleanM) {
+                $hasRealIsbnMatch = true;
             }
         }
-        if (!empty($vIsbn)) {
-            $weights['isbn'] = 20;
-            $scores['isbn'] = $isbnMatch;
+
+        // Base confidence score based on source
+        $baseSource = $merged['source'] ?? $source;
+        $baseConfidence = match ($baseSource) {
+            'google_books+openlibrary' => 95,
+            'google_books' => 85,
+            'openlibrary' => 80,
+            'websearch', 'tavily' => 65,
+            'gemini_vision' => 50,
+            'cache' => 100,
+            default => 85,
+        };
+
+        $score = $baseConfidence;
+        if ($hasRealIsbnMatch) {
+            // Boost score for having an exact ISBN match to enable auto-approval
+            if ($score === 95) {
+                $score += 5; // Google+OL: 100
+            } elseif ($score === 85) {
+                $score += 10; // Google Only: 95
+            } elseif ($score === 80) {
+                $score += 15; // OL Only: 95
+            } elseif ($score === 65) {
+                $score += 15; // Tavily Only: 80
+            }
         }
 
-        // Publisher (10%)
-        $vPublisher = $vision['publisher_hint'] ?? $vision['publisher'] ?? '';
-        $mPublisher = $merged['publisher'] ?? '';
-        if (!empty($vPublisher)) {
-            $weights['publisher'] = 10;
-            $scores['publisher'] = $this->computeSimilarity($vPublisher, $mPublisher);
+        // Apply a penalty if title/author from vision signals differs significantly from the merged metadata
+        $penalty = 0;
+        $vTitle = $vision['title'] ?? '';
+        $mTitle = $merged['title'] ?? '';
+        if (!empty($vTitle) && !empty($mTitle)) {
+            $titleSim = $this->computeSimilarity($vTitle, $mTitle);
+            if ($titleSim < 0.75) {
+                $penalty += (int) round((0.75 - $titleSim) * 20);
+            }
         }
 
-        // Description (10%)
-        $vDesc = $vision['description_back_cover'] ?? $vision['description'] ?? '';
-        $mDesc = $merged['description'] ?? '';
-        if (!empty($vDesc)) {
-            $weights['description'] = 10;
-            $scores['description'] = $this->computeSimilarity($vDesc, $mDesc);
+        $vAuthor = $vision['author'] ?? '';
+        $mAuthor = $merged['author'] ?? '';
+        if (!empty($vAuthor) && !empty($mAuthor)) {
+            $authorSim = $this->computeSimilarity($vAuthor, $mAuthor);
+            if ($authorSim < 0.70) {
+                $penalty += (int) round((0.70 - $authorSim) * 15);
+            }
         }
 
-        // If no weights are active, fallback to 50
-        if (empty($weights)) {
-            return 50;
-        }
+        $finalScore = $score - $penalty;
 
-        // Calculate weighted average
-        $totalWeight = array_sum($weights);
-        $weightedSum = 0;
-        foreach ($weights as $key => $weight) {
-            $weightedSum += $scores[$key] * $weight;
-        }
-
-        // Normalize to 0-100 scale
-        $finalScore = (int) round(($weightedSum / $totalWeight) * 100);
-
-        // Cap at 89 if no real/exact ISBN match is present to prevent auto-approve
+        // Cap at 89 if no exact/validated ISBN match is present to prevent auto-approve
         if (!$hasRealIsbnMatch && $finalScore > 89) {
             $finalScore = 89;
         }

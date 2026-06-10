@@ -112,6 +112,8 @@ class ObservabilityDashboardTest extends TestCase
             'source' => 'cache',
             'confidence_score' => 95,
             'status' => 'approved',
+            'metadata_completeness' => 80,
+            'metadata_missing' => ['present' => ['title', 'author', 'isbn', 'cover', 'description', 'category'], 'missing' => ['publisher', 'published_year']],
         ]);
 
         BookInbox::create([
@@ -122,6 +124,8 @@ class ObservabilityDashboardTest extends TestCase
             'source' => 'google_books',
             'confidence_score' => 85,
             'status' => 'pending',
+            'metadata_completeness' => 50,
+            'metadata_missing' => ['present' => ['title', 'author', 'isbn', 'cover'], 'missing' => ['description', 'category', 'publisher', 'published_year']],
         ]);
 
         $response = $this->actingAs($admin)->getJson(route('admin.observability.stats', ['range' => 'today']));
@@ -153,6 +157,17 @@ class ObservabilityDashboardTest extends TestCase
 
         // Average confidence score: (95 + 85) / 2 = 90.0
         $this->assertEquals(90.0, $response->json('avg_confidence'));
+
+        // Average completeness score: (80 + 50) / 2 = 65.0
+        $this->assertEquals(65.0, $response->json('avg_completeness'));
+
+        // Lowest completeness score: min(80, 50) = 50
+        $this->assertEquals(50, $response->json('lowest_completeness'));
+
+        // Most missing fields count: publisher = 2, published_year = 2, description = 1
+        $response->assertJsonPath('most_missing.publisher.count', 2);
+        $response->assertJsonPath('most_missing.published_year.count', 2);
+        $response->assertJsonPath('most_missing.description.count', 1);
     }
 
     /**

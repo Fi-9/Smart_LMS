@@ -89,7 +89,10 @@ class GeminiService
 
             // Send first image (front cover) as primary
             $frontFile = $images[0];
-            $http = Http::timeout($timeout)->acceptJson()->withoutVerifying();
+            $http = Http::timeout($timeout)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
 
             if ($n8nApiKey) {
                 $http = $http->withHeader('X-N8N-API-KEY', $n8nApiKey);
@@ -99,6 +102,11 @@ class GeminiService
             $tavilyApiKey = (string) $this->settingsService->get('ai.websearch.tavily_api_key', config('services.tavily.api_key'));
             if ($tavilyApiKey !== '') {
                 $http = $http->withHeader('X-Tavily-API-Key', $tavilyApiKey);
+            }
+
+            $googleBooksApiKey = (string) $this->settingsService->get('google_books.api_key', config('services.google_books.api_key'));
+            if ($googleBooksApiKey !== '') {
+                $http = $http->withHeader('X-Google-Books-API-Key', $googleBooksApiKey);
             }
 
             $http = $http->attach('image', file_get_contents($frontFile->getRealPath()), $frontFile->getClientOriginalName());
@@ -189,12 +197,11 @@ class GeminiService
                 ],
             ];
 
-            $response = Http::timeout(90)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->asJson()
-                ->post($url, $payload)
-                ->throw();
+            $http = Http::timeout(90)->acceptJson()->asJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->post($url, $payload)->throw();
 
             $data = $response->json() ?: [];
             $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -226,10 +233,11 @@ class GeminiService
 
         Log::channel('ai_scan')->info("Sending {$imageCount} image(s) to Gemini Vision via n8n");
 
-        $http = Http::timeout($timeout)
-            ->withoutVerifying()
-            ->acceptJson()
-            ->attach('prompt', $this->buildVisionPrompt($imageCount));
+        $http = Http::timeout($timeout)->acceptJson();
+        if (!config('services.ai_scan.tls_verify', true)) {
+            $http = $http->withoutVerifying();
+        }
+        $http = $http->attach('prompt', $this->buildVisionPrompt($imageCount));
 
         foreach ($images as $i => $file) {
             $http = $http->attach(
@@ -429,12 +437,11 @@ PROMPT;
                 ],
             ];
 
-            $response = Http::timeout($timeout)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->asJson()
-                ->post($url, $payload)
-                ->throw();
+            $http = Http::timeout($timeout)->acceptJson()->asJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->post($url, $payload)->throw();
 
             $data = $response->json() ?: [];
             return $data;

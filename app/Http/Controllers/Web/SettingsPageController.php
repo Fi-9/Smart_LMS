@@ -39,12 +39,27 @@ class SettingsPageController extends Controller
             $this->settingsService->putMany(['school_logo_path' => $path]);
         }
 
+        $googleBooksApiKey = $validated['google_books_api_key'] ?? null;
+        if ($googleBooksApiKey === '********') {
+            $googleBooksApiKey = $this->settingsService->get('google_books.api_key', config('services.google_books.api_key'));
+        }
+
+        $n8nApiKey = $validated['n8n_api_key'] ?? null;
+        if ($n8nApiKey === '********') {
+            $n8nApiKey = $this->settingsService->get('ai.n8n.api_key', config('services.n8n.api_key'));
+        }
+
+        $tavilyApiKey = $validated['tavily_api_key'] ?? null;
+        if ($tavilyApiKey === '********') {
+            $tavilyApiKey = $this->settingsService->get('ai.websearch.tavily_api_key', config('services.tavily.api_key'));
+        }
+
         $this->settingsService->putMany([
-            'google_books.api_key' => $validated['google_books_api_key'] ?? null,
+            'google_books.api_key' => $googleBooksApiKey,
             'ai.n8n.base_url' => $validated['n8n_base_url'],
-            'ai.n8n.api_key' => $validated['n8n_api_key'] ?? null,
+            'ai.n8n.api_key' => $n8nApiKey,
             'ai.websearch.enabled' => (bool) ($validated['websearch_enabled'] ?? false),
-            'ai.websearch.tavily_api_key' => $validated['tavily_api_key'] ?? null,
+            'ai.websearch.tavily_api_key' => $tavilyApiKey,
             'ai.websearch.tavily_base_url' => $validated['tavily_base_url'],
             'ai.websearch.tavily_timeout' => (string) $validated['tavily_timeout'],
             'ai.websearch.max_results' => (string) $validated['websearch_max_results'],
@@ -53,18 +68,19 @@ class SettingsPageController extends Controller
         ]);
 
         $envValues = [
-            'GOOGLE_BOOKS_API_KEY' => $validated['google_books_api_key'] ?? null,
             'N8N_BASE_URL' => $validated['n8n_base_url'],
-            'N8N_API_KEY' => $validated['n8n_api_key'] ?? null,
             'WEBSEARCH_ENABLED' => (bool) ($validated['websearch_enabled'] ?? false),
-            'TAVILY_API_KEY' => $validated['tavily_api_key'] ?? null,
             'TAVILY_BASE_URL' => $validated['tavily_base_url'],
             'TAVILY_TIMEOUT' => (int) $validated['tavily_timeout'],
             'WEBSEARCH_MAX_RESULTS' => (int) $validated['websearch_max_results'],
             'WEBSEARCH_ALLOWED_DOMAINS' => $validated['websearch_allowed_domains'] ?? null,
             'AI_SCAN_DEFAULT_MODE' => $validated['scan_default_mode'],
         ];
+
         $envRemoveKeys = [
+            'GOOGLE_BOOKS_API_KEY',
+            'N8N_API_KEY',
+            'TAVILY_API_KEY',
             'OLLAMA_BASE_URL',
             'OLLAMA_MODEL',
             'OLLAMA_VISION_MODEL',

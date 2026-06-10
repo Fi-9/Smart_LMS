@@ -319,6 +319,186 @@ class AsyncScanQueueTest extends TestCase
         $this->assertEquals(1, $this->session->book_count);
     }
 
+    public function test_lookup_isbn_endpoint_enqueues_scan_job(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/book-scanner/isbn', [
+            'isbn' => '9780753558676',
+        ]);
+
+        $response->assertStatus(202);
+        $response->assertJsonPath('queued', true);
+        $response->assertJsonStructure(['found', 'queued', 'scan_job_id', 'queue_number', 'message']);
+
+        // Assert job was pushed to queue
+        Queue::assertPushed(ProcessBookScanJob::class);
+
+        // Verify ScanJob record was created with current_stage = lookup and isbn set
+        $scanJob = ScanJob::first();
+        $this->assertNotNull($scanJob);
+        $this->assertEquals('waiting', $scanJob->status);
+        $this->assertEquals('lookup', $scanJob->current_stage);
+        $this->assertEquals('9780753558676', $scanJob->identification_result['isbn']);
+    }
+
+    public function test_lookup_isbn_endpoint_detects_duplicates(): void
+    {
+        // Enqueue first time
+        $response1 = $this->actingAs($this->user)->postJson('/book-scanner/isbn', [
+            'isbn' => '9780753558676',
+        ]);
+        $response1->assertStatus(202);
+
+        // Enqueue second time (should detect duplicate)
+        $response2 = $this->actingAs($this->user)->postJson('/book-scanner/isbn', [
+            'isbn' => '9780753558676',
+        ]);
+
+        $response2->assertStatus(200);
+        $response2->assertJsonPath('warning', 'duplicate_detected');
+
+        // Enqueue with force = true
+        $response3 = $this->actingAs($this->user)->postJson('/book-scanner/isbn', [
+            'isbn' => '9780753558676',
+            'force' => 'true',
+        ]);
+        $response3->assertStatus(202);
+    }
+
+    public function test_queue_status_matches_isbn_only_jobs_correctly(): void
+    {
+        // Create an unrelated completed camera job with a cover
+        $jobCamera = ScanJob::query()->create([
+            'scan_session_id' => $this->session->id,
+            'front_cover_path' => 'book-scans/front_camera.jpg',
+            'status' => 'completed',
+            'attempts' => 1,
+            'queue_number' => 1,
+        ]);
+        $inboxCamera = BookInbox::query()->create([
+            'scan_session_id' => $this->session->id,
+            'scanned_by' => $this->user->id,
+            'scan_job_id' => $jobCamera->id,
+            'title' => 'The Attributes',
+            'cover_front_path' => 'book-scans/front_camera.jpg',
+            'isbn' => '9780753558676',
+            'status' => 'pending',
+            'confidence' => 1.0,
+        ]);
+
+        // Create an ISBN‑only job with NO cover path
+        $jobIsbn = ScanJob::query()->create([
+            'scan_session_id' => $this->session->id,
+            'isbn' => '9786230993909',
+            'scan_source' => 'isbn',
+            'front_cover_path' => '',
+            'status' => 'completed',
+            'attempts' => 1,
+            'queue_number' => 2,
+        ]);
+        $inboxIsbn = BookInbox::query()->create([
+            'scan_session_id' => $this->session->id,
+            'scanned_by' => $this->user->id,
+            'scan_job_id' => $jobIsbn->id,
+            'title' => 'Buku Antariksa',
+            'cover_front_path' => null,
+            'isbn' => '9786230993909',
+            'status' => 'pending',
+            'confidence' => 1.0,
+        ]);
+
+        // Call the queue status endpoint
+        $response = $this->actingAs($this->user)->getJson('/book-scanner/queue-status');
+        $response->assertOk();
+
+        $jobs = $response->json('jobs');
+
+        // Find the matched jobs in response
+        $returnedCameraJob = collect($jobs)->firstWhere('id', $jobCamera->id);
+        $returnedIsbnJob = collect($jobs)->firstWhere('id', $jobIsbn->id);
+
+        $this->assertNotNull($returnedCameraJob);
+        $this->assertNotNull($returnedIsbnJob);
+
+        // Assert the camera job is mapped to "The Attributes"
+        $this->assertEquals('The Attributes', $returnedCameraJob['book_title']);
+
+        // Assert the ISBN job is mapped to "Buku Antariksa", NOT "The Attributes"
+        $this->assertEquals('Buku Antariksa', $returnedIsbnJob['book_title']);
+    }
+
+    public function test_retry_endpoint_rejects_unauthorized_user(): void
+    {
+        $otherUser = User::factory()->create(['role' => UserRole::ADMIN->value]);
+        
+        $scanJob = ScanJob::query()->create([
+            'scan_session_id' => $this->session->id,
+            'front_cover_path' => 'book-scans/front_test.jpg',
+            'status' => 'failed',
+            'error_message' => 'Something failed',
+            'attempts' => 1,
+            'queue_number' => 1,
+        ]);
+
+        $response = $this->actingAs($otherUser)->postJson("/book-scanner/retry/{$scanJob->id}");
+
+        $response->assertStatus(403);
+        $response->assertJsonPath('success', false);
+        $response->assertJsonPath('error', 'Unauthorized. Pekerjaan ini bukan milik sesi Anda.');
+    }
+
+    public function test_save_inbox_rejects_unauthorized_user(): void
+    {
+        $otherUser = User::factory()->create(['role' => UserRole::ADMIN->value]);
+
+        $inbox = BookInbox::query()->create([
+            'scan_session_id' => $this->session->id,
+            'scanned_by' => $this->user->id,
+            'title' => 'Original Title',
+            'author' => 'Original Author',
+            'isbn' => '1234567890',
+            'publisher' => 'Original Publisher',
+            'published_year' => 2020,
+            'description' => 'Original Description',
+            'category' => 'Technology',
+            'confidence' => 0.8,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($otherUser)->postJson('/book-scanner/save-inbox', [
+            'inbox_id' => $inbox->id,
+            'title' => 'Updated Title',
+        ]);
+
+        $response->assertStatus(403);
+        $response->assertJsonPath('saved', false);
+        $response->assertJsonPath('error', 'Unauthorized. Data inbox ini bukan milik Anda.');
+    }
+
+    public function test_delete_inbox_rejects_unauthorized_user(): void
+    {
+        $otherUser = User::factory()->create(['role' => UserRole::ADMIN->value]);
+
+        $inbox = BookInbox::query()->create([
+            'scan_session_id' => $this->session->id,
+            'scanned_by' => $this->user->id,
+            'title' => 'Original Title',
+            'author' => 'Original Author',
+            'isbn' => '1234567890',
+            'publisher' => 'Original Publisher',
+            'published_year' => 2020,
+            'description' => 'Original Description',
+            'category' => 'Technology',
+            'confidence' => 0.8,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($otherUser)->deleteJson("/book-scanner/inbox/{$inbox->id}");
+
+        $response->assertStatus(403);
+        $response->assertJsonPath('success', false);
+        $response->assertJsonPath('error', 'Unauthorized. Data inbox ini bukan milik Anda.');
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();

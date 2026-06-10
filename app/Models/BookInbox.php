@@ -40,6 +40,7 @@ class BookInbox extends Model
     protected $fillable = [
         'scan_session_id',
         'scanned_by',
+        'scan_job_id',
         'rack_id',
         'title',
         'author',
@@ -64,13 +65,17 @@ class BookInbox extends Model
         'processing_notes',
         'source_chain',
         'stage_completed_at',
+        'metadata_completeness',
+        'metadata_missing',
     ];
 
     protected $casts = [
         'scan_data' => 'array',
         'source_chain' => 'array',
+        'metadata_missing' => 'array',
         'confidence' => 'float',
         'confidence_score' => 'integer',
+        'metadata_completeness' => 'integer',
         'published_year' => 'integer',
         'routed_at' => 'datetime',
         'stage_completed_at' => 'datetime',
@@ -79,6 +84,11 @@ class BookInbox extends Model
     public function scanSession(): BelongsTo
     {
         return $this->belongsTo(ScanSession::class);
+    }
+
+    public function scanJob(): BelongsTo
+    {
+        return $this->belongsTo(ScanJob::class);
     }
 
     public function scannedBy(): BelongsTo

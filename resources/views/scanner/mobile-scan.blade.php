@@ -240,9 +240,48 @@
                 <div class="flex-1 text-sm">
                     <p class="font-bold text-gray-900" id="r-title-preview">-</p>
                     <p class="text-gray-500 text-xs mt-1">oleh <span id="r-author-preview">-</span></p>
-                    <div class="mt-2 flex items-center gap-2">
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
                         <span id="r-source-badge" class="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-700">-</span>
                         <span id="r-confidence" class="text-[10px] text-gray-400"></span>
+                        <button type="button" id="btn-source-chain" onclick="openSourceChainDrawer()" class="hidden rounded-full bg-gray-200 hover:bg-gray-300 px-2.5 py-0.5 text-[10px] font-bold text-gray-700 transition active:scale-95">
+                            ⓘ Asal Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Completeness bar --}}
+            <div class="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-indigo-900">Metadata Completeness</span>
+                    <span class="text-xs font-black text-indigo-700" id="r-completeness-score">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                    <div id="r-completeness-bar" class="bg-indigo-600 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <p class="text-[10px] text-indigo-800 mt-2 font-medium" id="r-missing-fields-wrap">
+                    Missing: <span id="r-missing-fields-list" class="font-bold">-</span>
+                </p>
+            </div>
+
+            {{-- Duplicate Warning Alert Card --}}
+            <div id="result-duplicate-warning" class="hidden mb-4 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                <div class="flex items-start gap-2">
+                    <span class="text-base">⚠️</span>
+                    <div class="flex-1">
+                        <p class="font-bold mb-1">Buku ini sudah ada di perpustakaan:</p>
+                        <p id="result-duplicate-warning-text" class="font-medium mb-3">-</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" onclick="handleDuplicateAction('copy')" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg active:scale-95 transition">
+                                + Tambah Eksemplar
+                            </button>
+                            <button type="button" onclick="handleDuplicateAction('new')" class="bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-800 font-bold px-3 py-1.5 rounded-lg active:scale-95 transition">
+                                Simpan Baru
+                            </button>
+                            <button type="button" onclick="handleDuplicateAction('cancel')" class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-3 py-1.5 rounded-lg active:scale-95 transition ml-auto">
+                                Batal
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -331,6 +370,13 @@
                 {{-- Cover and Status --}}
                 <div class="flex gap-4 p-3 bg-gray-50 rounded-xl">
                     <img id="modal-cover" class="w-20 h-26 object-cover rounded-lg bg-gray-200 border border-gray-100" src="" alt="Cover">
+                    <div id="modal-cover-placeholder" class="w-20 h-26 rounded-lg bg-gray-50 border border-gray-200 flex flex-col items-center justify-center text-gray-400 text-center p-2 text-[9px] font-bold" style="display:none">
+                        <svg class="w-8 h-8 text-gray-300 mb-1" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 014.875 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12h.008v.008H15V12zm0 3h.008v.008H15V15zm0 3h.008v.008H15V18zm3-3h.008v.008H18V15zm0 3h.008v.008H18V18zm-9-9h.008v.008H9V9zm0 3h.008v.008H9V12zm0 3h.008v.008H9V15zm3-6h.008v.008H12V9zm0 3h.008v.008H12V12zm0 3h.008v.008H12V15zm3-9h.008v.008H15V6zm0 3h.008v.008H15V9zm3 0h.008v.008H18V9zm0 3h.008v.008H18V12z" />
+                        </svg>
+                        <span>ISBN SCAN</span>
+                    </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-bold text-gray-900 text-sm truncate" id="modal-book-title">-</p>
                         <p class="text-gray-500 text-xs mt-0.5 truncate">oleh <span id="modal-book-author">-</span></p>
@@ -391,7 +437,25 @@
                 <button onclick="closeJobModal()" class="flex-1 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 active:scale-[0.98] transition">
                     Tutup
                 </button>
+    </div>
+
+    {{-- ═══ Source Chain Drawer / Modal ═══ --}}
+    <div id="source-chain-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl border border-gray-100 animate-fade-in">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-base font-bold text-gray-900">ⓘ Asal Data (Metadata Sources)</h3>
+                <button onclick="closeSourceChainModal()" class="text-gray-400 hover:text-gray-600 text-lg font-bold">&times;</button>
             </div>
+            
+            <p class="text-xs text-gray-500 mb-4 font-semibold">Sumber data asal untuk masing-masing field metadata buku:</p>
+            
+            <div class="space-y-2 text-xs" id="source-chain-list">
+                <!-- Field mappings will be injected here -->
+            </div>
+            
+            <button onclick="closeSourceChainModal()" class="w-full mt-5 rounded-xl border border-gray-300 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 active:scale-[0.98] transition">
+                Tutup
+            </button>
         </div>
     </div>
 </div>
@@ -423,20 +487,22 @@
     let currentRetryJobId = null;
     let currentInboxId = null;
     let currentFilter = 'all'; // 'all' | 'waiting' | 'processing' | 'completed' | 'failed'
+    let lastEntryMode = 'camera'; // 'camera' | 'isbn'
 
     const $ = id => document.getElementById(id);
     const screens = ['screen-start','screen-mode','screen-camera','screen-isbn','screen-processing','screen-result','screen-done','screen-duplicate-warning'];
     function showScreen(id) { screens.forEach(s => { if($(s)) $(s).classList.add('hidden'); }); const el = $(id); if(el) el.classList.remove('hidden'); }
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-    function formatSourceLabel(src) {
+    function formatSourceLabel(src, scanSource) {
         const sourceLabel = src || 'gemini_vision';
+        const isCamera = scanSource ? scanSource === 'camera' : true;
         if (sourceLabel === 'google_books+openlibrary' || sourceLabel === 'google_books+openlibrary_gemini') {
-            return '✓ Gemini + Google Books + Open Library';
+            return isCamera ? '✓ Gemini + Google Books + Open Library' : '✓ Google Books + Open Library';
         } else if (sourceLabel === 'google_books' || sourceLabel === 'google_books_gemini') {
-            return '✓ Gemini + Google Books';
+            return isCamera ? '✓ Gemini + Google Books' : '✓ Google Books';
         } else if (sourceLabel === 'openlibrary' || sourceLabel === 'openlibrary_gemini') {
-            return '✓ Gemini + Open Library';
+            return isCamera ? '✓ Gemini + Open Library' : '✓ Open Library';
         } else if (sourceLabel === 'gemini_vision' || sourceLabel === 'gemini_gemini') {
             return '⚠ Gemini Only';
         } else if (sourceLabel === 'cache') {
@@ -510,6 +576,9 @@
         captureTarget = 'front';
         currentCoverUrl = null;
         currentInboxId = null;
+        currentSourceChain = null;
+        if ($('btn-source-chain')) $('btn-source-chain').classList.add('hidden');
+        if ($('result-duplicate-warning')) $('result-duplicate-warning').classList.add('hidden');
         $('preview-front').innerHTML = '<span>Cover<br>Depan</span>';
         $('preview-front').classList.remove('active');
         $('preview-back').innerHTML = '<span>Cover<br>Blkg</span>';
@@ -529,6 +598,7 @@
     // ═══════════════════════════════════
     window.startCamera = () => {
         resetScanState();
+        lastEntryMode = 'camera';
         captureTarget = 'front';
         $('cam-title').textContent = '📷 Cover Depan';
         $('cam-step').textContent = '1/2';
@@ -635,13 +705,13 @@
             if (barcodes.length > 0) {
                 const value = barcodes[0].rawValue.replace(/[^0-9Xx]/g, '');
                 if (value.length >= 10 && value.length <= 13) {
-                    // ISBN detected! Auto-capture
-                    $('barcode-indicator').classList.remove('hidden');
-                    $('cam-overlay').classList.add('captured');
-                    setTimeout(() => {
-                        $('barcode-indicator').classList.add('hidden');
-                        doCapture();
-                    }, 600);
+                    // Barcode detected: Stop camera, vibrate, populate input, lookup directly!
+                    stopCamera();
+                    if (navigator.vibrate) {
+                        navigator.vibrate(200);
+                    }
+                    $('isbn-input').value = value;
+                    lookupIsbn();
                     return;
                 }
             }
@@ -773,14 +843,21 @@
     // ISBN
     // ═══════════════════════════════════
     window.showIsbn = () => {
+        resetScanState();
+        lastEntryMode = 'isbn';
         showScreen('screen-isbn');
         $('isbn-input').focus();
         initIsbnScanner();
     };
 
+    let lastBarcodeVal = null;
+    let sameBarcodeCountVal = 0;
+
     function initIsbnScanner() {
         if (typeof Html5Qrcode === 'undefined') return;
         if (html5QrReader) return;
+        lastBarcodeVal = null;
+        sameBarcodeCountVal = 0;
         try {
             html5QrReader = new Html5Qrcode('isbn-scanner');
             html5QrReader.start(
@@ -789,8 +866,23 @@
                 text => {
                     const isbn = text.replace(/[^0-9Xx]/g, '');
                     if (isbn.length >= 10 && isbn.length <= 13) {
-                        $('isbn-input').value = isbn;
-                        html5QrReader.stop().then(() => { html5QrReader = null; lookupIsbn(); });
+                        if (isbn === lastBarcodeVal) {
+                            sameBarcodeCountVal++;
+                        } else {
+                            lastBarcodeVal = isbn;
+                            sameBarcodeCountVal = 1;
+                        }
+                        if (sameBarcodeCountVal >= 3) {
+                            // Stable read! Auto-submit
+                            lastBarcodeVal = null;
+                            sameBarcodeCountVal = 0;
+                            $('isbn-input').value = isbn;
+                            if (html5QrReader) {
+                                html5QrReader.stop().then(() => { html5QrReader = null; lookupIsbn(); }).catch(() => { html5QrReader = null; lookupIsbn(); });
+                            } else {
+                                lookupIsbn();
+                            }
+                        }
                     }
                 },
                 () => {}
@@ -798,17 +890,26 @@
         } catch(e) { html5QrReader = null; }
     }
 
-    window.lookupIsbn = async () => {
+    window.lookupIsbn = async (force = false) => {
         const isbn = $('isbn-input').value.trim().replace(/[^0-9Xx]/g, '');
         if (!isbn) return;
         if (html5QrReader) { html5QrReader.stop().catch(()=>{}); html5QrReader = null; }
         showScreen('screen-processing');
-        $('proc-title').textContent = '🔍 Mencari ISBN...';
-        $('proc-detail').textContent = 'Google Books → OpenLibrary';
+        $('proc-title').textContent = '📤 Mengunggah...';
+        $('proc-detail').textContent = 'Memasukkan ISBN ke antrean';
         try {
-            const r = await api('/book-scanner/isbn', { isbn });
-            if (r.found) showResult(r.book, r.source);
-            else showResult({ isbn, title: 'ISBN: ' + isbn }, 'manual');
+            const r = await api('/book-scanner/isbn', { isbn, force: force ? 'true' : 'false' });
+            if (r.warning === 'duplicate_detected') {
+                showScreen('screen-duplicate-warning');
+            } else if (r.queued) {
+                const c = parseInt($('session-count').textContent || '0');
+                $('session-count').textContent = c + 1;
+                resetScanState();
+                showSuccessQueued(r.queue_number);
+                fetchStats();
+            } else {
+                throw new Error(r.error || 'Gagal memasukkan antrean');
+            }
         } catch(e) { alert('Lookup gagal: ' + e.message); backToMode(); }
     };
 
@@ -896,12 +997,14 @@
             $('r-cover').style.display = 'none';
             $('r-cover-placeholder').style.display = 'flex';
         }
+
+        recalculateResultCompleteness();
     }
 
     // ═══════════════════════════════════
     // SAVE
     // ═══════════════════════════════════
-    window.saveToInbox = async () => {
+    window.saveToInbox = async (actionType = null) => {
         const title = $('r-title').value.trim();
         if (!title) { alert('Judul wajib diisi'); return; }
         const data = {
@@ -913,6 +1016,7 @@
             cover_url: currentCoverUrl,
             source: $('r-source-badge').textContent,
             inbox_id: currentInboxId,
+            action_type: actionType,
         };
         try {
             await api('/book-scanner/save-inbox', data);
@@ -924,6 +1028,108 @@
             showSuccessSaved();
             fetchStats();
         } catch(e) { alert('Gagal: ' + e.message); }
+    };
+
+    window.handleDuplicateAction = async (action) => {
+        if (action === 'cancel') {
+            if (!currentInboxId) {
+                resetScanState();
+                showScreen('screen-mode');
+                startQueuePolling();
+                return;
+            }
+            if (confirm('Apakah Anda yakin ingin membatalkan/menghapus item scan ini dari inbox?')) {
+                try {
+                    await api(`/book-scanner/inbox/${currentInboxId}`, null, 'DELETE');
+                    resetScanState();
+                    showScreen('screen-mode');
+                    startQueuePolling();
+                    fetchStats();
+                } catch (e) {
+                    alert('Gagal menghapus item: ' + e.message);
+                }
+            }
+        } else if (action === 'new') {
+            await saveToInbox('save_new');
+        } else if (action === 'copy') {
+            await saveToInbox('add_copy');
+        }
+    };
+
+    window.openSourceChainDrawer = () => {
+        if (!currentSourceChain) return;
+        
+        const list = $('source-chain-list');
+        list.innerHTML = '';
+        
+        const google = currentSourceChain.google;
+        const ol = currentSourceChain.openlibrary;
+        const vision = currentSourceChain.identification;
+        const isCache = currentSourceChain.cache_hit;
+        
+        const getSourceTag = (field) => {
+            if (isCache) {
+                return '<span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-700">⚡ Cache Hit</span>';
+            }
+            
+            if (field === 'description') {
+                if (ol && ol.description && ol.description.length > 100) {
+                    return '<span class="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-700">Open Library</span>';
+                }
+                if (google && google.description) {
+                    return '<span class="rounded-full bg-green-100 px-2.5 py-0.5 text-[10px] font-bold text-green-700">Google Books</span>';
+                }
+                if (vision && (vision.description || vision.description_back_cover)) {
+                    return '<span class="rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-bold text-purple-700">Gemini Vision</span>';
+                }
+            } else if (field === 'cover') {
+                if (ol && ol.cover_url) {
+                    return '<span class="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-700">Open Library</span>';
+                }
+                if (google && google.cover_url) {
+                    return '<span class="rounded-full bg-green-100 px-2.5 py-0.5 text-[10px] font-bold text-green-700">Google Books</span>';
+                }
+                return '<span class="rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-bold text-purple-700">Gemini Vision</span>';
+            } else {
+                if (google && google[field]) {
+                    return '<span class="rounded-full bg-green-100 px-2.5 py-0.5 text-[10px] font-bold text-green-700">Google Books</span>';
+                }
+                if (ol && ol[field]) {
+                    return '<span class="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-700">Open Library</span>';
+                }
+                if (vision && vision[field]) {
+                    return '<span class="rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-bold text-purple-700">Gemini Vision</span>';
+                }
+            }
+            return '<span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-bold text-gray-700">Default / Tidak Ada</span>';
+        };
+        
+        const fields = [
+            { key: 'title', label: 'Judul' },
+            { key: 'author', label: 'Penulis' },
+            { key: 'isbn', label: 'ISBN' },
+            { key: 'publisher', label: 'Penerbit' },
+            { key: 'published_year', label: 'Tahun Terbit' },
+            { key: 'category', label: 'Kategori' },
+            { key: 'description', label: 'Deskripsi' },
+            { key: 'cover', label: 'Cover Buku' }
+        ];
+        
+        fields.forEach(f => {
+            const tag = getSourceTag(f.key);
+            list.innerHTML += `
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span class="text-gray-500 font-bold">${f.label}</span>
+                    ${tag}
+                </div>
+            `;
+        });
+        
+        $('source-chain-modal').classList.remove('hidden');
+    };
+    
+    window.closeSourceChainModal = () => {
+        $('source-chain-modal').classList.add('hidden');
     };
 
     // ═══════════════════════════════════
@@ -938,7 +1144,11 @@
     }
 
     window.confirmDuplicateForce = () => {
-        window.processImages(true);
+        if (lastEntryMode === 'isbn') {
+            window.lookupIsbn(true);
+        } else {
+            window.processImages(true);
+        }
     };
 
     window.cancelDuplicate = () => {
@@ -979,8 +1189,18 @@
         badge.classList.add(...statusClass.split(' '));
 
         // Cover image
-        const coverUrl = job.front_cover_path ? '/storage/' + job.front_cover_path : '';
-        $('modal-cover').src = coverUrl;
+        const coverFront = job.book_cover_front || job.front_cover_path;
+        if (coverFront) {
+            const coverPath = (coverFront.startsWith('http://') || coverFront.startsWith('https://')) 
+                ? coverFront 
+                : '/storage/' + coverFront;
+            $('modal-cover').src = coverPath;
+            $('modal-cover').style.display = 'block';
+            $('modal-cover-placeholder').style.display = 'none';
+        } else {
+            $('modal-cover').style.display = 'none';
+            $('modal-cover-placeholder').style.display = 'flex';
+        }
 
         // Title & Author & Details
         if (job.status === 'completed') {
@@ -1171,10 +1391,23 @@
         filteredJobs.forEach(job => {
             const coverSrc = job.front_cover_path ? '/storage/' + job.front_cover_path : '';
             
+            // Generate cover element
+            const coverHtml = coverSrc
+                ? `<img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200">`
+                : `<div class="w-8 h-10 rounded bg-gray-100 flex items-center justify-center border border-gray-200 text-[8px] text-gray-400 font-extrabold select-none">ISBN</div>`;
+            
+            const coverHtmlPulse = coverSrc
+                ? `<img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200 animate-pulse">`
+                : `<div class="w-8 h-10 rounded bg-gray-100 flex items-center justify-center border border-gray-200 text-[8px] text-gray-400 font-extrabold select-none animate-pulse">ISBN</div>`;
+                
+            const coverHtmlOpacity = coverSrc
+                ? `<img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200 opacity-60">`
+                : `<div class="w-8 h-10 rounded bg-gray-100 flex items-center justify-center border border-gray-200 text-[8px] text-gray-400 font-extrabold select-none opacity-60">ISBN</div>`;
+            
             if (job.status === 'waiting') {
                 html += `
                 <div onclick="openJobDetails(${job.id})" class="flex items-center gap-3 p-2 bg-gray-50 border border-gray-100 rounded-xl cursor-pointer hover:bg-gray-100 transition duration-200 animate-fade-in">
-                    <img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200">
+                    ${coverHtml}
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between">
                             <p class="text-xs font-bold text-gray-700 truncate">Mengantre</p>
@@ -1202,10 +1435,10 @@
                     stageText = 'Stage 5/5: Menyimpan ke Inbox';
                     stageLabel = 'Buku sedang dikirim ke inbox review...';
                 }
-
+ 
                 html += `
                 <div onclick="openJobDetails(${job.id})" class="flex items-center gap-3 p-2 bg-blue-50/50 border border-blue-100 rounded-xl cursor-pointer hover:bg-blue-100/70 transition duration-200 animate-fade-in">
-                    <img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200 animate-pulse">
+                    ${coverHtmlPulse}
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between">
                             <p class="text-xs font-bold text-blue-700 truncate">${stageText}</p>
@@ -1223,7 +1456,7 @@
                 
                 html += `
                 <div onclick="openJobDetails(${job.id})" class="flex items-center gap-3 p-2 bg-green-50/20 border border-green-100 rounded-xl cursor-pointer hover:bg-green-50/40 transition duration-200 animate-fade-in">
-                    <img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200">
+                    ${coverHtml}
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between">
                             <p class="text-xs font-bold text-gray-800 truncate" title="${job.book_title || 'Selesai'}">${job.book_title || 'Selesai diproses'}</p>
@@ -1236,7 +1469,7 @@
                 const errorMsg = job.error_message || 'Kesalahan internal';
                 html += `
                 <div onclick="openJobDetails(${job.id})" class="flex items-center gap-3 p-2 bg-red-50/50 border border-red-100 rounded-xl cursor-pointer hover:bg-red-100/70 transition duration-200 animate-fade-in">
-                    <img src="${coverSrc}" class="w-8 h-10 object-cover rounded bg-gray-200 opacity-60">
+                    ${coverHtmlOpacity}
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between">
                             <p class="text-xs font-bold text-red-700 truncate">Gagal diproses</p>
@@ -1294,15 +1527,19 @@
             $('r-year').value = job.book_year || '';
             $('r-category').value = job.book_category || '';
             $('r-description').value = job.book_description || '';
-            currentCoverUrl = null;
+            
+            // Cover preview using local storage file path or remote URL
+            const coverFront = job.book_cover_front || job.front_cover_path;
+            currentCoverUrl = coverFront || null;
 
             // Preview text
             $('r-title-preview').textContent = job.book_title || '(Belum ada judul)';
             $('r-author-preview').textContent = job.book_author || '-';
 
-            // Cover preview using local storage file path
-            if (job.front_cover_path) {
-                const coverPath = '/storage/' + job.front_cover_path;
+            if (coverFront) {
+                const coverPath = (coverFront.startsWith('http://') || coverFront.startsWith('https://')) 
+                    ? coverFront 
+                    : '/storage/' + coverFront;
                 $('r-cover').src = coverPath;
                 $('r-cover').style.display = 'block';
                 $('r-cover-placeholder').style.display = 'none';
@@ -1313,8 +1550,24 @@
             }
 
             // Set badge & confidence text
-            $('r-source-badge').textContent = formatSourceLabel(job.source);
+            $('r-source-badge').textContent = formatSourceLabel(job.source, job.scan_source);
             $('r-confidence').textContent = job.confidence_score ? `(${job.confidence_score}%)` : '';
+
+            // Source chain data
+            currentSourceChain = job.source_chain || null;
+            if (currentSourceChain) {
+                $('btn-source-chain').classList.remove('hidden');
+            } else {
+                $('btn-source-chain').classList.add('hidden');
+            }
+
+            // Duplicate warning alert card
+            if (currentSourceChain && currentSourceChain.has_existing_book) {
+                $('result-duplicate-warning-text').textContent = `${currentSourceChain.existing_book_title || 'Buku ini'} (ISBN ${job.book_isbn || ''})`;
+                $('result-duplicate-warning').classList.remove('hidden');
+            } else {
+                $('result-duplicate-warning').classList.add('hidden');
+            }
             
             // Update rescan button to be "← Kembali"
             const rescanBtn = document.querySelector('#screen-result button[onclick^="rescan"]');
@@ -1322,6 +1575,8 @@
                 rescanBtn.innerHTML = '← Kembali';
                 rescanBtn.setAttribute('onclick', 'backToMode()');
             }
+
+            recalculateResultCompleteness();
 
             showScreen('screen-result');
         } else {
@@ -1348,7 +1603,7 @@
         $('r-year').value = '';
         $('r-category').value = '';
         $('r-description').value = '';
-        currentCoverUrl = null;
+        currentCoverUrl = job.front_cover_path || null;
 
         // Cover preview
         if (job.front_cover_path) {
@@ -1367,6 +1622,8 @@
         $('r-source-badge').textContent = 'manual';
         $('r-confidence').textContent = '';
 
+        recalculateResultCompleteness();
+
         // Update rescan button to be "← Kembali"
         const rescanBtn = document.querySelector('#screen-result button[onclick^="rescan"]');
         if (rescanBtn) {
@@ -1376,6 +1633,68 @@
 
         showScreen('screen-result');
     };
+
+    // Recalculate completeness dynamically in result screen
+    function recalculateResultCompleteness() {
+        const title = $('r-title')?.value.trim() || '';
+        const author = $('r-author')?.value.trim() || '';
+        const isbn = $('r-isbn')?.value.trim() || '';
+        const publisher = $('r-publisher')?.value.trim() || '';
+        const year = $('r-year')?.value.trim() || '';
+        const category = $('r-category')?.value.trim() || '';
+        const description = $('r-description')?.value.trim() || '';
+        const cover = currentCoverUrl || frontDataUrl || '';
+
+        const fields = {
+            title,
+            author,
+            isbn,
+            cover,
+            description,
+            category,
+            publisher,
+            published_year: year
+        };
+
+        let filled = 0;
+        let missing = [];
+        const allFieldNames = ['title', 'author', 'isbn', 'cover', 'description', 'category', 'publisher', 'published_year'];
+
+        allFieldNames.forEach(name => {
+            const value = fields[name];
+            if (value !== undefined && value !== null && value !== '' && value !== 'Unknown') {
+                filled++;
+            } else {
+                missing.push(name);
+            }
+        });
+
+        const score = Math.round((filled / allFieldNames.length) * 100);
+
+        const scoreEl = $('r-completeness-score');
+        if (scoreEl) scoreEl.textContent = score + '%';
+        const barEl = $('r-completeness-bar');
+        if (barEl) barEl.style.width = score + '%';
+        const listEl = $('r-missing-fields-list');
+        if (listEl) listEl.textContent = missing.length > 0 ? missing.join(', ') : 'None';
+    }
+
+    const resultInputs = ['r-title', 'r-author', 'r-isbn', 'r-publisher', 'r-year', 'r-category', 'r-description'];
+    resultInputs.forEach(id => {
+        const el = $(id);
+        if (el) {
+            el.addEventListener('input', recalculateResultCompleteness);
+            el.addEventListener('change', recalculateResultCompleteness);
+        }
+    });
+
+    // Enter Submit for ISBN Input
+    $('isbn-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            lookupIsbn();
+        }
+    });
 
     window.addEventListener('beforeunload', () => { stopCamera(); stopQueuePolling(); if(html5QrReader) html5QrReader.stop().catch(()=>{}); });
 })();

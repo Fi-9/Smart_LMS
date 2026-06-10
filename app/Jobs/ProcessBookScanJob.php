@@ -59,6 +59,17 @@ class ProcessBookScanJob implements ShouldQueue
             return;
         }
 
+        // Detect ISBN‑only flow based on the scan_source
+        $isIsbnFlow = $scanJob->scan_source !== 'camera';
+        if ($isIsbnFlow) {
+            // Jump straight to lookup stage
+            $scanJob->update([
+                'current_stage' => 'lookup',
+                'stage_status' => 'processing',
+                'stage_message' => 'Lookup based on ISBN only',
+            ]);
+        }
+
         // Initialize metrics array or load existing metrics
         $metrics = is_array($scanJob->pipeline_metrics) ? $scanJob->pipeline_metrics : [];
 
@@ -76,39 +87,44 @@ class ProcessBookScanJob implements ShouldQueue
         $startTotal = microtime(true);
 
         try {
-            $images = $this->hydrateImages($scanJob);
-            if (empty($images)) {
-                throw new \RuntimeException('Cover images not found or deleted on the server.');
-            }
-
-            // ==========================================
-            // STAGE 1: Book Identification
-            // ==========================================
-            $identificationResult = $scanJob->identification_result;
-            if (empty($identificationResult)) {
-                $stage1Start = microtime(true);
-                $scanJob->update([
-                    'current_stage' => 'identification',
-                    'stage_status' => 'processing',
-                    'stage_message' => 'Identifying book details from covers...',
-                ]);
-
-                $identificationResult = $this->retryWithBackoff(3, [5000, 15000, 30000], function () use ($identificationService, $scanJob, $images) {
-                    return $identificationService->identify($scanJob, $images);
-                });
-                
-                $stage1Duration = (int) round((microtime(true) - $stage1Start) * 1000);
-                $metrics['identification'] = $stage1Duration;
-                $this->logProvider('Gemini', $stage1Duration, 'success', $scanJob->id);
-
+            // If this is an ISBN‑only flow, skip image hydration and identification
+            if ($isIsbnFlow) {
+                $identificationResult = ['isbn' => $scanJob->isbn];
             } else {
-                Log::channel('ai_scan')->info("Skipping Stage 1 (Resume): Identification result already exists");
-            }
+                $images = $this->hydrateImages($scanJob);
+                if (empty($images) && empty($scanJob->identification_result)) {
+                    throw new \RuntimeException('Cover images not found or deleted on the server.');
+                }
 
-            $scanJob->update([
-                'stage_status' => 'completed',
-                'pipeline_metrics' => $metrics,
-            ]);
+                // ==========================================
+                // STAGE 1: Book Identification
+                // ==========================================
+                $identificationResult = $scanJob->identification_result;
+                if (empty($identificationResult)) {
+                    $stage1Start = microtime(true);
+                    $scanJob->update([
+                        'current_stage' => 'identification',
+                        'stage_status' => 'processing',
+                        'stage_message' => 'Identifying book details from covers...',
+                    ]);
+
+                    $identificationResult = $this->retryWithBackoff(3, [5000, 15000, 30000], function () use ($identificationService, $scanJob, $images) {
+                        return $identificationService->identify($scanJob, $images);
+                    });
+                    
+                    $stage1Duration = (int) round((microtime(true) - $stage1Start) * 1000);
+                    $metrics['identification'] = $stage1Duration;
+                    $this->logProvider('Gemini', $stage1Duration, 'success', $scanJob->id);
+
+                } else {
+                    Log::channel('ai_scan')->info("Skipping Stage 1 (Resume): Identification result already exists");
+                }
+
+                $scanJob->update([
+                    'stage_status' => 'completed',
+                    'pipeline_metrics' => $metrics,
+                ]);
+            }
 
             // Extract basic fields for logging and fallback
             $title = $this->cleanString($identificationResult['title'] ?? null);
@@ -175,7 +191,10 @@ class ProcessBookScanJob implements ShouldQueue
             ]);
 
             if ($finalSource !== 'cache') {
+                // Enrich metadata (e.g., translation, confidence calculations)
                 $merged = $enrichmentService->enrich($identificationResult, $googleData, $olData);
+                // Apply source priority as defined by product owner
+                $merged = $this->applySourcePriority($identificationResult, $googleData, $olData, $merged);
                 $finalSource = $this->determineFinalSource($googleData, $olData);
             }
 
@@ -190,11 +209,6 @@ class ProcessBookScanJob implements ShouldQueue
 
             // Calculate confidence score (weighted similarity)
             $confidenceScore = $enrichmentService->calculateConfidence($identificationResult, $merged, $finalSource);
-
-            // Save to cache (if it wasn't a cache hit)
-            if ($finalSource !== 'cache') {
-                $this->saveToCache($merged, $isbn, $title, $author);
-            }
 
             $stage3Duration = (int) round((microtime(true) - $stage3Start) * 1000);
             $metrics['enrichment'] = $stage3Duration;
@@ -224,6 +238,12 @@ class ProcessBookScanJob implements ShouldQueue
                 'pipeline_metrics' => $metrics,
             ]);
 
+            // Save to cache (if it wasn't a cache hit)
+            if ($finalSource !== 'cache') {
+                $this->saveToCache($merged, $isbn, $title, $author);
+            }
+
+
             // ==========================================
             // STAGE 5: Admin Inbox
             // ==========================================
@@ -235,9 +255,11 @@ class ProcessBookScanJob implements ShouldQueue
             ]);
 
             // Normalize covers using the correct web path format
-            $frontWebPath = '/storage/' . $scanJob->front_cover_path;
-            $frontCoverNormalized = $coverImageService->normalizeCoverFromUpload($frontWebPath);
-            
+            $frontCoverNormalized = null;
+            if ($scanJob->front_cover_path) {
+                $frontWebPath = '/storage/' . $scanJob->front_cover_path;
+                $frontCoverNormalized = $coverImageService->normalizeCoverFromUpload($frontWebPath);
+            }
             $backCoverNormalized = null;
             if ($scanJob->back_cover_path) {
                 $backWebPath = '/storage/' . $scanJob->back_cover_path;
@@ -247,6 +269,39 @@ class ProcessBookScanJob implements ShouldQueue
             // Determine status based on confidence score (>= 95 auto-approved, else pending)
             $status = $confidenceScore >= 95 ? 'approved' : 'pending';
 
+            $cleanIsbn = $this->cleanIsbn($merged['isbn'] ?? null) ?: $isbn;
+            $hasExistingBook = false;
+            $existingBookTitle = null;
+            if ($cleanIsbn) {
+                $existingBook = \App\Models\Book::where('isbn', $cleanIsbn)->first();
+                if ($existingBook) {
+                    $hasExistingBook = true;
+                    $existingBookTitle = $existingBook->title;
+                }
+            }
+
+            // Determine description source
+            $descriptionSource = null;
+            if (!empty($merged['description'])) {
+                if (($googleData['description_source'] ?? null) === 'tavily' || ($olData['description_source'] ?? null) === 'tavily') {
+                    $descriptionSource = 'tavily';
+                } elseif (!empty($googleData['description']) && $merged['description'] === $googleData['description']) {
+                    $descriptionSource = 'google_books';
+                } elseif (!empty($olData['description']) && $merged['description'] === $olData['description']) {
+                    $descriptionSource = 'openlibrary';
+                } elseif (!empty($identificationResult['description']) && $merged['description'] === $identificationResult['description']) {
+                    $descriptionSource = 'gemini_vision';
+                } else {
+                    if (!empty($googleData['description'])) {
+                        $descriptionSource = 'google_books';
+                    } elseif (!empty($olData['description'])) {
+                        $descriptionSource = 'openlibrary';
+                    } else {
+                        $descriptionSource = 'gemini_vision';
+                    }
+                }
+            }
+
             // Create source chain info
             $sourceChain = [
                 'identification' => $identificationResult,
@@ -254,15 +309,27 @@ class ProcessBookScanJob implements ShouldQueue
                 'openlibrary' => $olData,
                 'cache_hit' => ($finalSource === 'cache'),
                 'final_source' => $finalSource,
+                'has_existing_book' => $hasExistingBook,
+                'existing_book_title' => $existingBookTitle,
+                'description' => $descriptionSource,
             ];
 
             // Build processing notes
             $processingNotes = "Pipeline v5.0 processing completed. Final source: {$finalSource}. Confidence score: {$confidenceScore}%.";
 
+            // Calculate metadata completeness
+            $completenessData = $this->calculateCompleteness($merged, $frontCoverNormalized);
+            $metadataCompleteness = $completenessData['score'];
+            $metadataMissing = [
+                'present' => $completenessData['present'],
+                'missing' => $completenessData['missing']
+            ];
+
             // Insert into book_inbox staging
             $inbox = BookInbox::query()->create([
                 'scan_session_id' => $scanJob->scan_session_id,
                 'scanned_by' => $scanJob->scanSession->user_id,
+                'scan_job_id' => $scanJob->id,
                 'title' => $this->cleanString($merged['title'] ?? null) ?: $title,
                 'author' => $this->cleanString($merged['author'] ?? null) ?: $author,
                 'isbn' => $this->cleanIsbn($merged['isbn'] ?? null) ?: $isbn,
@@ -271,12 +338,14 @@ class ProcessBookScanJob implements ShouldQueue
                 'description' => $merged['description'] ?: null,
                 'category' => $merged['category'] ?: ($identificationResult['category'] ?? null),
                 'language' => $merged['language'] ?: 'id',
-                'cover_front_path' => $frontCoverNormalized ?: $scanJob->front_cover_path,
+                'cover_front_path' => $frontCoverNormalized ?: ($scanJob->front_cover_path ?: ($merged['cover_url'] ?? null)),
                 'cover_back_path' => $backCoverNormalized ?: $scanJob->back_cover_path,
                 'source' => $finalSource,
                 'source_url' => $merged['source_url'] ?? null,
                 'confidence' => $confidenceScore / 100, // keep existing 0.0-1.0 float in sync
                 'confidence_score' => $confidenceScore,
+                'metadata_completeness' => $metadataCompleteness,
+                'metadata_missing' => $metadataMissing,
                 'status' => $status,
                 'scan_data' => [
                     'vision_raw' => ['best' => $identificationResult],
@@ -430,6 +499,15 @@ class ProcessBookScanJob implements ShouldQueue
      */
     private function saveToCache(array $data, ?string $isbn, ?string $title, ?string $author): void
     {
+        $resolvedTitle = $data['title'] ?: $title;
+        if (empty($resolvedTitle) || $resolvedTitle === 'Unknown') {
+            return;
+        }
+
+        // Cache healing: calculate completeness and set TTL based on quality gate policy
+        $completeness = $this->calculateCompleteness($data);
+        $completenessScore = $completeness['score'];
+
         try {
             $hash = ($title && $author) ? sha1(strtolower(trim($title)) . '|' . strtolower(trim($author))) : null;
 
@@ -441,6 +519,18 @@ class ProcessBookScanJob implements ShouldQueue
             } else {
                 return;
             }
+
+            // Cache healing: set expiry based on completeness
+            // Completeness < 50: TTL 15 minutes.
+            // Completeness 50-70: TTL 1 hour.
+            // Completeness 70-90: TTL 6 hours.
+            // Completeness > 90: TTL 24 hours.
+            $expiresAt = match (true) {
+                $completenessScore > 90 => now()->addHours(24),
+                $completenessScore >= 70 => now()->addHours(6),
+                $completenessScore >= 50 => now()->addHours(1),
+                default => now()->addMinutes(15),
+            };
 
             BookLookupCache::query()->updateOrCreate(
                 $searchAttrs,
@@ -456,6 +546,7 @@ class ProcessBookScanJob implements ShouldQueue
                     'cover_url' => $data['cover_url'] ?? null,
                     'language' => $data['language'] ?? 'id',
                     'metadata_json' => $data,
+                    'expires_at' => $expiresAt,
                 ]
             );
         } catch (Throwable $e) {
@@ -642,6 +733,57 @@ class ProcessBookScanJob implements ShouldQueue
         if ($ol) return 'openlibrary';
         return 'gemini_vision';
     }
+    /**
+     * Apply source priority to merged metadata according to product owner rules.
+     *
+     * Priority (high to low):
+     *   - Title, Author, ISBN, Publisher, Published Year, Category: Google Books > OpenLibrary > Vision
+     *   - Description: prefer longer description (>100 chars) from OpenLibrary, else Google, else Vision
+     *   - Cover URL: OpenLibrary > Google Books > Uploaded Cover (if any)
+     *   - Language: Google Books > OpenLibrary > 'id'
+     *   - Source URL: Google Books > OpenLibrary > Vision
+     */
+    private function applySourcePriority(array $vision, ?array $google, ?array $ol, array $merged): array
+    {
+        // Helper to pick first non-null, non-empty value
+        $pick = function (...$values) {
+            foreach ($values as $v) {
+                if ($v !== null && $v !== '' && $v !== []) {
+                    return $v;
+                }
+            }
+            return null;
+        };
+
+        // Fields with Google > OpenLibrary > Vision priority
+        $fields = ['title', 'author', 'isbn', 'publisher', 'published_year', 'category'];
+        foreach ($fields as $field) {
+            $merged[$field] = $pick($google[$field] ?? null, $ol[$field] ?? null, $vision[$field] ?? null);
+        }
+
+        // Description priority: longer description from OL (>100 chars) else GB else Vision
+        $descOl = $ol['description'] ?? '';
+        $descGb = $google['description'] ?? '';
+        $descVision = $vision['description'] ?? '';
+        if (strlen((string) $descOl) > 100) {
+            $merged['description'] = $descOl;
+        } elseif (strlen((string) $descGb) > 0) {
+            $merged['description'] = $descGb;
+        } else {
+            $merged['description'] = $descVision;
+        }
+
+        // Cover URL priority: OL > GB > existing merged (uploaded)
+        $merged['cover_url'] = $pick($ol['cover_url'] ?? null, $google['cover_url'] ?? null, $merged['cover_url'] ?? null);
+
+        // Language priority: GB > OL > default 'id'
+        $merged['language'] = $pick($google['language'] ?? null, $ol['language'] ?? null, 'id');
+
+        // Source URL priority: GB > OL > Vision
+        $merged['source_url'] = $pick($google['source_url'] ?? null, $ol['source_url'] ?? null, $vision['source_url'] ?? null);
+
+        return $merged;
+    }
 
     /**
      * Check if description is in Indonesian using stop-words.
@@ -740,5 +882,47 @@ class ProcessBookScanJob implements ShouldQueue
         } catch (Throwable $e) {
             Log::error('Failed to update ScanSession stats: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Calculate metadata completeness score and list missing fields.
+     *
+     * @param array $merged The merged metadata
+     * @param string|null $coverPath Optional local cover path override
+     * @return array{score: int, present: array<string>, missing: array<string>}
+     */
+    private function calculateCompleteness(array $merged, ?string $coverPath = null): array
+    {
+        $fields = [
+            'title' => $merged['title'] ?? null,
+            'author' => $merged['author'] ?? null,
+            'isbn' => $merged['isbn'] ?? null,
+            'cover' => $coverPath ?: ($merged['cover_url'] ?? null),
+            'description' => $merged['description'] ?? null,
+            'category' => $merged['category'] ?? null,
+            'publisher' => $merged['publisher'] ?? null,
+            'published_year' => $merged['published_year'] ?? null,
+        ];
+
+        $missing = [];
+        $present = [];
+        $filled = 0;
+
+        foreach ($fields as $name => $value) {
+            if (!empty($value) && $value !== 'Unknown') {
+                $filled++;
+                $present[] = $name;
+            } else {
+                $missing[] = $name;
+            }
+        }
+
+        $score = (int) round(($filled / count($fields)) * 100);
+
+        return [
+            'score' => $score,
+            'present' => $present,
+            'missing' => $missing,
+        ];
     }
 }

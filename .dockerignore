@@ -13,3 +13,5 @@
 /public/storage
 /public/hot
 /docker-compose*.yml
+/scratch
+/.autoclaw-attachments

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\CategoryMapper;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -249,10 +250,26 @@ class IsbnLookupService
         $result = $resolver();
         $hit = is_array($result);
 
+        $ttlMinutes = 15;
+        if ($hit) {
+            $score = $this->calculateCompleteness($result);
+            if ($score > 90) {
+                $ttlMinutes = 24 * 60;
+            } elseif ($score >= 70) {
+                $ttlMinutes = 6 * 60;
+            } elseif ($score >= 50) {
+                $ttlMinutes = 60;
+            } else {
+                $ttlMinutes = 15;
+            }
+        } else {
+            $ttlMinutes = $this->cacheMissMinutes();
+        }
+
         Cache::put(
             $key,
             ['hit' => $hit, 'data' => $hit ? $result : null],
-            now()->addMinutes($hit ? $this->cacheMinutes() : $this->cacheMissMinutes())
+            now()->addMinutes($ttlMinutes)
         );
 
         Log::info('book_lookup.cache', [
@@ -264,6 +281,33 @@ class IsbnLookupService
         ]);
 
         return $result;
+    }
+
+    private function calculateCompleteness(?array $merged): int
+    {
+        if (!$merged) {
+            return 0;
+        }
+
+        $fields = [
+            'title' => $merged['title'] ?? null,
+            'author' => $merged['author'] ?? null,
+            'isbn' => $merged['isbn'] ?? null,
+            'cover' => $merged['cover_url'] ?? null,
+            'description' => $merged['description'] ?? null,
+            'category' => $merged['category'] ?? null,
+            'publisher' => $merged['publisher'] ?? null,
+            'published_year' => $merged['published_year'] ?? null,
+        ];
+
+        $filled = 0;
+        foreach ($fields as $name => $value) {
+            if ($value !== null && $value !== '' && $value !== 'Unknown') {
+                $filled++;
+            }
+        }
+
+        return (int) round(($filled / count($fields)) * 100);
     }
 
     private function cacheMinutes(): int
@@ -306,10 +350,11 @@ class IsbnLookupService
         }
 
         try {
-            $response = Http::timeout(10)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->get('https://www.googleapis.com/books/v1/volumes', $query);
+            $http = Http::timeout(10)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get('https://www.googleapis.com/books/v1/volumes', $query);
         } catch (ConnectionException) {
             Log::warning('Book lookup: failed connecting to Google Books API.', ['query' => $query]);
 
@@ -343,12 +388,16 @@ class IsbnLookupService
         return [
             'title' => $this->clean($volumeInfo['title'] ?? null),
             'author' => $this->clean($volumeInfo['authors'][0] ?? null),
-            'category' => $this->clean($volumeInfo['categories'][0] ?? null),
+            'category' => CategoryMapper::toIndonesian(
+                $this->clean($volumeInfo['categories'][0] ?? null)
+            ),
             'description' => $this->clean($volumeInfo['description'] ?? null),
             'publisher' => $this->clean($volumeInfo['publisher'] ?? null),
             'published_year' => $this->normalizeYear($volumeInfo['publishedDate'] ?? null),
             'isbn' => $isbn,
-            'cover_url' => $this->clean($volumeInfo['imageLinks']['thumbnail'] ?? null),
+            'cover_url' => $this->upgradeGoogleCoverUrl(
+                $this->clean($volumeInfo['imageLinks']['thumbnail'] ?? null)
+            ),
             'source' => 'google',
             'source_url' => $this->clean($volumeInfo['infoLink'] ?? null) ?? 'https://books.google.com/',
         ];
@@ -498,10 +547,11 @@ class IsbnLookupService
     private function lookupOpenLibraryByIsbnInternal(string $isbn): ?array
     {
         try {
-            $response = Http::timeout(10)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->get("https://openlibrary.org/isbn/{$isbn}.json");
+            $http = Http::timeout(10)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get("https://openlibrary.org/isbn/{$isbn}.json");
         } catch (ConnectionException) {
             Log::warning('Book lookup: failed connecting to OpenLibrary ISBN API.', ['isbn' => $isbn]);
 
@@ -532,10 +582,11 @@ class IsbnLookupService
         $query['limit'] = 1;
 
         try {
-            $response = Http::timeout(10)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->get('https://openlibrary.org/search.json', $query);
+            $http = Http::timeout(10)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $response = $http->get('https://openlibrary.org/search.json', $query);
         } catch (ConnectionException) {
             Log::warning('Book lookup: failed connecting to OpenLibrary search API.', ['query' => $query]);
 
@@ -564,7 +615,9 @@ class IsbnLookupService
         return [
             'title' => $this->clean($doc['title'] ?? null),
             'author' => $this->clean($doc['author_name'][0] ?? null),
-            'category' => $this->extractOpenLibrarySearchCategory($doc),
+            'category' => CategoryMapper::toIndonesian(
+                $this->extractOpenLibrarySearchCategory($doc)
+            ),
             'description' => null,
             'publisher' => $this->clean($doc['publisher'][0] ?? null),
             'published_year' => $this->normalizeYear($doc['first_publish_year'] ?? null),
@@ -604,7 +657,9 @@ class IsbnLookupService
         return [
             'title' => $this->clean($book['title'] ?? null),
             'author' => $authorName,
-            'category' => $this->extractOpenLibraryEditionCategory($book),
+            'category' => CategoryMapper::toIndonesian(
+                $this->extractOpenLibraryEditionCategory($book)
+            ),
             'description' => $description,
             'publisher' => $this->clean($book['publishers'][0] ?? null),
             'published_year' => $this->normalizeYear($book['publish_date'] ?? null),
@@ -627,10 +682,11 @@ class IsbnLookupService
     private function fetchOpenLibraryAuthorName(string $authorKey): ?string
     {
         try {
-            $authorResponse = Http::timeout(8)
-                ->withoutVerifying()
-                ->acceptJson()
-                ->get('https://openlibrary.org' . $authorKey . '.json');
+            $http = Http::timeout(8)->acceptJson();
+            if (!config('services.ai_scan.tls_verify', true)) {
+                $http = $http->withoutVerifying();
+            }
+            $authorResponse = $http->get('https://openlibrary.org' . $authorKey . '.json');
         } catch (ConnectionException) {
             return null;
         }
@@ -789,4 +845,17 @@ class IsbnLookupService
 
         return trim($value);
     }
+
+    /**
+     * Upgrade Google Books thumbnail URL to higher resolution.
+     * Replaces zoom=N with zoom=0 for max resolution, removes curl edge effect, forces HTTPS.
+     */
+    private function upgradeGoogleCoverUrl(?string $url): ?string
+    {
+        if (!$url) return null;
+        $url = preg_replace('/zoom=\d+/', 'zoom=0', $url) ?? $url;
+        $url = str_replace('&edge=curl', '', $url);
+        return str_replace('http://', 'https://', $url);
+    }
 }
+
