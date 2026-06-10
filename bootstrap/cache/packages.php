@@ -48,17 +48,6 @@
       0 => 'Termwind\\Laravel\\TermwindServiceProvider',
     ),
   ),
-  'prism-php/prism' => 
-  array (
-    'aliases' => 
-    array (
-      'PrismServer' => 'Prism\\Prism\\Facades\\PrismServer',
-    ),
-    'providers' => 
-    array (
-      0 => 'Prism\\Prism\\PrismServiceProvider',
-    ),
-  ),
   'simplesoftwareio/simple-qrcode' => 
   array (
     'aliases' => 
