@@ -26,4 +26,24 @@ fi
 # Run database migrations automatically on startup
 php artisan migrate --force --no-interaction
 
+# Start queue worker in background loop
+(
+    set +e
+    while true; do
+        echo "[$(date)] Starting queue worker..."
+        php artisan queue:work database --queue=ai-scan,default --tries=3 --timeout=300 --sleep=3 --no-interaction
+        echo "[$(date)] Queue worker stopped with status $?. Restarting in 5 seconds..."
+        sleep 5
+    done
+) >> /var/www/html/storage/logs/queue-worker.log 2>&1 &
+
+# Start scheduler in background loop
+(
+    set +e
+    while true; do
+        php artisan schedule:run --no-interaction
+        sleep 60
+    done
+) >> /var/www/html/storage/logs/scheduler.log 2>&1 &
+
 exec "$@"

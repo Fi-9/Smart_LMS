@@ -148,7 +148,7 @@
             </div>
 
             {{-- Camera view --}}
-            <div class="cam-container mx-4 rounded-xl">
+            <div class="cam-container mx-4 rounded-xl relative">
                 <video id="cam-video" class="cam-view" autoplay playsinline muted></video>
                 <div id="cam-overlay" class="cam-overlay"></div>
                 {{-- Auto-capture countdown --}}
@@ -166,6 +166,24 @@
                 {{-- Barcode indicator --}}
                 <div id="barcode-indicator" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 bg-green-500/90 text-white text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur">
                     ✅ ISBN Terdeteksi!
+                </div>
+
+                {{-- Fallback UI for HTTP / Insecure Contexts --}}
+                <div id="cam-fallback-ui" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-gray-950 p-6 text-center text-white z-20 rounded-xl">
+                    <p class="text-4xl mb-3">📸</p>
+                    <p class="text-sm font-bold mb-1" id="fallback-status-title">Cover Depan</p>
+                    <p class="text-xs text-gray-400 mb-5 leading-relaxed">Browser memblokir kamera langsung karena koneksi HTTP (insecure). Gunakan tombol di bawah:</p>
+                    
+                    <div class="w-full flex flex-col gap-3 px-4">
+                        <label class="cursor-pointer bg-indigo-650 hover:bg-indigo-750 active:scale-95 text-xs font-bold px-5 py-3.5 rounded-xl transition text-center shadow-md">
+                            📷 <span id="fallback-btn-label">Ambil Foto Cover Depan</span>
+                            <input type="file" id="fallback-file-input" accept="image/*" class="hidden">
+                        </label>
+                        
+                        <button id="fallback-skip-btn" onclick="skipBackCoverFallback()" class="hidden rounded-xl border border-gray-750 bg-gray-900/80 hover:bg-gray-850 text-xs font-bold px-5 py-3.5 text-gray-200 transition active:scale-95">
+                            ⏭️ Lewati Cover Belakang
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -606,7 +624,25 @@
         $('btn-capture').textContent = '📸 Ambil Manual';
         showScreen('screen-camera');
         stopQueuePolling();
-        startStream();
+
+        const cameraSupported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        if (!cameraSupported) {
+            $('cam-fallback-ui').classList.remove('hidden');
+            $('btn-capture').style.display = 'none';
+            $('btn-flash').style.display = 'none';
+            const toggleCamBtn = document.querySelector('#screen-camera button[onclick^="toggleCamera"]');
+            if (toggleCamBtn) toggleCamBtn.style.display = 'none';
+            $('fallback-status-title').textContent = 'Cover Depan';
+            $('fallback-btn-label').textContent = 'Ambil Foto Cover Depan';
+            $('fallback-skip-btn').classList.add('hidden');
+        } else {
+            $('cam-fallback-ui').classList.add('hidden');
+            $('btn-capture').style.display = 'block';
+            $('btn-flash').style.display = 'none'; // Will show if back camera supports torch
+            const toggleCamBtn = document.querySelector('#screen-camera button[onclick^="toggleCamera"]');
+            if (toggleCamBtn) toggleCamBtn.style.display = 'block';
+            startStream();
+        }
     };
 
     async function startStream() {
@@ -645,6 +681,11 @@
             currentStream.getTracks().forEach(t => t.stop());
             currentStream = null;
         }
+    };
+
+    window.skipBackCoverFallback = () => {
+        stopCamera();
+        processImages();
     };
 
     window.toggleCamera = () => {
@@ -1697,6 +1738,40 @@
     });
 
     window.addEventListener('beforeunload', () => { stopCamera(); stopQueuePolling(); if(html5QrReader) html5QrReader.stop().catch(()=>{}); });
+
+    // Fallback File Input Change Listener
+    $('fallback-file-input')?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const dataUrl = event.target.result;
+            if (captureTarget === 'front') {
+                frontBlob = file;
+                frontDataUrl = dataUrl;
+                updatePreview('preview-front', dataUrl, 'Depan ✅');
+                
+                // Move to back cover
+                captureTarget = 'back';
+                $('cam-title').textContent = '📷 Cover Belakang';
+                $('cam-step').textContent = '2/2';
+                $('cam-hint').textContent = 'Ambil foto cover belakang (opsional)';
+                $('fallback-status-title').textContent = 'Cover Belakang';
+                $('fallback-btn-label').textContent = 'Ambil Foto Cover Belakang';
+                $('fallback-skip-btn').classList.remove('hidden');
+            } else {
+                backBlob = file;
+                backDataUrl = dataUrl;
+                updatePreview('preview-back', dataUrl, 'Blkg ✅');
+                stopCamera();
+                processImages();
+            }
+            // Clear input value so selecting the same file triggers change again
+            e.target.value = '';
+        };
+        reader.readAsDataURL(file);
+    });
 })();
 </script>
 @endpush
