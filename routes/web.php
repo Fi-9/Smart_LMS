@@ -40,14 +40,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/book-scanner/stats', [MobileScanController::class, 'todayStats'])->name('book-scanner.stats');
     Route::get('/book-scanner/logs', function() {
         $logs = [];
-        $paths = [
-            'queue' => '/var/www/html/storage/logs/queue-worker.log',
-            'scheduler' => '/var/www/html/storage/logs/scheduler.log',
-            'laravel' => '/var/www/html/storage/logs/laravel.log',
-        ];
+        $dir = '/var/www/html/storage/logs';
         
-        // Inline helper function
-        $tail_file = function($filepath, $lines = 100) {
+        $tail_file = function($filepath, $lines = 150) {
             if (!file_exists($filepath)) return "";
             $f = fopen($filepath, "r");
             if (!$f) return "";
@@ -62,17 +57,18 @@ Route::middleware(['auth'])->group(function () {
             return implode("", $buffer);
         };
 
-        foreach ($paths as $name => $path) {
-            if (file_exists($path)) {
-                $logs[$name] = [
-                    'exists' => true,
-                    'size' => filesize($path),
-                    'content' => $tail_file($path, 100),
-                ];
-            } else {
-                $logs[$name] = [
-                    'exists' => false,
-                ];
+        if (is_dir($dir)) {
+            $files = scandir($dir);
+            foreach ($files as $file) {
+                if ($file === '.' || $file === '..') continue;
+                $path = $dir . '/' . $file;
+                if (is_file($path)) {
+                    $logs[$file] = [
+                        'exists' => true,
+                        'size' => filesize($path),
+                        'content' => $tail_file($path, 150),
+                    ];
+                }
             }
         }
         
