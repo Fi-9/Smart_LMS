@@ -175,10 +175,11 @@
                     <p class="text-xs text-gray-400 mb-5 leading-relaxed">Browser memblokir kamera langsung karena koneksi HTTP (insecure). Gunakan tombol di bawah:</p>
                     
                     <div class="w-full flex flex-col gap-3 px-4">
-                        <label class="cursor-pointer bg-indigo-650 hover:bg-indigo-750 active:scale-95 text-xs font-bold px-5 py-3.5 rounded-xl transition text-center shadow-md">
+                        <label for="fallback-file-input" class="cursor-pointer bg-indigo-650 hover:bg-indigo-750 active:scale-95 text-xs font-bold px-5 py-3.5 rounded-xl transition text-center shadow-md block">
                             📷 <span id="fallback-btn-label">Ambil Foto Cover Depan</span>
-                            <input type="file" id="fallback-file-input" accept="image/*" class="hidden">
                         </label>
+                        <input type="file" id="fallback-file-input" accept="image/*" capture="environment" style="opacity: 0; position: absolute; pointer-events: none; width: 1px; height: 1px;">
+
                         
                         <button id="fallback-skip-btn" onclick="skipBackCoverFallback()" class="hidden rounded-xl border border-gray-750 bg-gray-900/80 hover:bg-gray-850 text-xs font-bold px-5 py-3.5 text-gray-200 transition active:scale-95">
                             ⏭️ Lewati Cover Belakang

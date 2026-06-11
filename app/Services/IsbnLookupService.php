@@ -141,9 +141,68 @@ class IsbnLookupService
                 return $web;
             }
 
+            // Fallback to Gemini Direct API if both failed OR description is still missing
+            $gemini = $this->lookupGeminiByIsbn($normalizedIsbn);
+            if ($gemini) {
+                if ($primary) {
+                    return $this->mergeMissingMetadataFields($primary, $gemini);
+                }
+                return $gemini;
+            }
+
             return $primary;
         });
     }
+
+    private function lookupGeminiByIsbn(string $isbn): ?array
+    {
+        try {
+            $geminiService = app(\App\Services\GeminiService::class);
+            $prompt = "Kamu adalah pustakawan digital. Berikan metadata buku secara akurat untuk nomor ISBN {$isbn}.\n" .
+                      "Kembalikan HANYA JSON valid dengan format:\n" .
+                      "{\n" .
+                      "  \"title\": \"judul buku\",\n" .
+                      "  \"author\": \"nama penulis\",\n" .
+                      "  \"publisher\": \"nama penerbit\",\n" .
+                      "  \"published_year\": \"tahun terbit\",\n" .
+                      "  \"category\": \"kategori buku\",\n" .
+                      "  \"description\": \"sinopsis singkat dalam bahasa Indonesia\"\n" .
+                      "}\n" .
+                      "Jika kamu benar-benar tidak tahu buku dengan ISBN tersebut, set semua field ke null.";
+            
+            $response = $geminiService->callGeminiDirect($prompt);
+            $text = $response['candidates'][0]['content']['parts'][0]['text'] ?? '';
+            
+            // Clean markdown blocks
+            $cleaned = trim($text);
+            if (str_starts_with($cleaned, '```')) {
+                $cleaned = preg_replace('/^```(?:json)?\s*\n?/', '', $cleaned);
+                $cleaned = preg_replace('/\n?```$/', '', $cleaned);
+            }
+            
+            $data = json_decode($cleaned, true);
+            if (!is_array($data) || empty($data['title'])) {
+                return null;
+            }
+            
+            return [
+                'title' => $this->clean($data['title'] ?? null),
+                'author' => $this->clean($data['author'] ?? null),
+                'publisher' => $this->clean($data['publisher'] ?? null),
+                'published_year' => $this->normalizeYear($data['published_year'] ?? null),
+                'category' => CategoryMapper::toIndonesian($this->clean($data['category'] ?? null)),
+                'description' => $this->clean($data['description'] ?? null),
+                'isbn' => $isbn,
+                'cover_url' => null,
+                'source' => 'gemini',
+                'source_url' => 'https://gemini.google.com/',
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('IsbnLookupService: Gemini fallback failed for ISBN ' . $isbn . ': ' . $e->getMessage());
+            return null;
+        }
+    }
+
 
     public function searchByTitleAuthor(?string $title, ?string $author): ?array
     {

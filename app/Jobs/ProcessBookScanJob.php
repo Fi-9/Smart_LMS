@@ -30,8 +30,9 @@ class ProcessBookScanJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $attempts = 0;
-    public int $tries = 3;
+    public int $tries = 5;
     public int $timeout = 600;
+    public array $backoff = [30, 60, 120, 240];
 
     /**
      * Create a new job instance.

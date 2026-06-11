@@ -17,8 +17,9 @@ class EnrichBookWithTavilyJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 5;
     public int $timeout = 180;
+    public array $backoff = [30, 60, 120, 240];
 
     /**
      * Create a new job instance.
