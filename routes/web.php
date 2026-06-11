@@ -38,6 +38,52 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/book-scanner/save-inbox', [MobileScanController::class, 'saveToInbox'])->name('book-scanner.save-inbox');
     Route::delete('/book-scanner/inbox/{inbox}', [MobileScanController::class, 'deleteInbox'])->name('book-scanner.inbox.destroy');
     Route::get('/book-scanner/stats', [MobileScanController::class, 'todayStats'])->name('book-scanner.stats');
+    Route::get('/book-scanner/logs', function() {
+        $logs = [];
+        $paths = [
+            'queue' => '/var/www/html/storage/logs/queue-worker.log',
+            'scheduler' => '/var/www/html/storage/logs/scheduler.log',
+            'laravel' => '/var/www/html/storage/logs/laravel.log',
+        ];
+        
+        // Inline helper function
+        $tail_file = function($filepath, $lines = 100) {
+            if (!file_exists($filepath)) return "";
+            $f = fopen($filepath, "r");
+            if (!$f) return "";
+            $buffer = [];
+            while (($line = fgets($f)) !== false) {
+                $buffer[] = $line;
+                if (count($buffer) > $lines) {
+                    array_shift($buffer);
+                }
+            }
+            fclose($f);
+            return implode("", $buffer);
+        };
+
+        foreach ($paths as $name => $path) {
+            if (file_exists($path)) {
+                $logs[$name] = [
+                    'exists' => true,
+                    'size' => filesize($path),
+                    'content' => $tail_file($path, 100),
+                ];
+            } else {
+                $logs[$name] = [
+                    'exists' => false,
+                ];
+            }
+        }
+        
+        $processes = [];
+        exec('ps aux', $processes);
+        
+        return response()->json([
+            'logs' => $logs,
+            'processes' => $processes,
+        ]);
+    });
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
 
